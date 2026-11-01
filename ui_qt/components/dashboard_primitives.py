@@ -237,6 +237,11 @@ class QuickToolCard(QFrame):
         if description:
             self._desc_label = QLabel(description)
             self._desc_label.setObjectName("ToolDesc")
+            # Wrap (never a single-line minimum): a card's width floor is
+            # set by its TITLE, so the grid's 3-column minimum stays well
+            # under the viewport — a one-line desc minimum would inflate
+            # the whole home view past its scroll viewport.
+            self._desc_label.setWordWrap(True)
             text_col.addWidget(self._desc_label)
         else:
             self._desc_label = None

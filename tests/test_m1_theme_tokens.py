@@ -225,8 +225,8 @@ class TestQssTemplatePins:
         assert font["tool"] == 15
         assert font["tool_desc"] == 12.5
         assert font["sidebar"] == 13
-        assert font["body_lg"] == 20
-        assert font["eyebrow"] == 13
+        assert font["body_lg"] == 22
+        assert font["eyebrow"] == 14
         assert font["brand"] == 22
 
     def test_qss_has_dashboard_label_rules_and_hero_cta(self):

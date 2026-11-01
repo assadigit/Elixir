@@ -84,8 +84,8 @@ FONT = _ns(
     # the approved reference (1536×1024) — eyebrow cap ~11px, headline
     # ascender ~30px over two ~46px lines, support ~20px ascender 17px,
     # section heading cap ~16px, card titles ~15px, nav labels ~13px.
-    eyebrow=13,  # hero eyebrow (tracked uppercase, reference cap ~11px)
-    body_lg=20,  # dashboard body / hero support copy (reference ascender 17px)
+    eyebrow=14,  # hero eyebrow (tracked uppercase, reference cap ~11px)
+    body_lg=22,  # dashboard body / hero support copy (reference ascender 17px)
     tool=15,  # quick-tool card titles (reference ~15px semibold)
     tool_desc=12.5,  # quick-tool card descriptions (reference ~12px)
     sidebar=13,  # sidebar nav labels, medium weight (reference ~13px)
@@ -585,8 +585,8 @@ def _qss(p: Palette) -> str:
         background-color: {p.accent};
         color: {p.text_on_accent};
         border: none;
-        border-radius: 28px;
-        padding: 14px 26px;
+        border-radius: 29px;
+        padding: 17px 26px;
         font-size: 16px; font-weight: {WEIGHT.semibold};
         outline: none;
     }}
@@ -609,8 +609,8 @@ def _qss(p: Palette) -> str:
         color: {p.text_primary};
         border: 1px solid {p.border};
         border-radius: 18px;
-        padding: 6px 14px;
-        font-size: {FONT.body_lg}px; font-weight: {WEIGHT.medium};
+        padding: 7px 16px;
+        font-size: {FONT.sidebar}px; font-weight: {WEIGHT.medium};
         outline: none;
     }}
     QPushButton#BackendPill:hover {{

@@ -205,7 +205,10 @@ class TestExperimentalFour:
 class TestHero:
     def test_single_start_conversion_cta_reusing_the_wizard_entry(self):
         code = _strip_comments(_src(_HOME))
-        assert code.count('QPushButton("Start Conversion")') == 1, "exactly one hero CTA"
+        # V0.6.78: the CTA is the _HeroCTA QPushButton subclass (paints the
+        # reference's trailing arrow inside the pill) — still exactly one.
+        assert code.count('("Start Conversion")') == 1, "exactly one hero CTA"
+        assert "class _HeroCTA(QPushButton):" in code
         assert 'setObjectName("HeroPrimary")' in code
         # the view only EMITS — the opening logic is never forked into it
         assert "start_requested = Signal()" in code
@@ -217,22 +220,41 @@ class TestHero:
         app = _strip_comments(_src(_APP))
         assert "self.home_view.start_requested.connect(self._open_wizard)" in app
 
-    def test_no_full_conversion_tile_in_quick_tools(self):
-        groups = _module_const(_HOME, "_QUICK_GROUPS")
-        quick_keys = [k for _g, keys in groups for k in keys]
-        assert "full_conversion" not in quick_keys, "the hero must not be duplicated as a tile"
-        # …while the TOOL_CARDS data itself is untouched (the legacy convert
-        # page still renders its full dashboard from it)
-        assert "full_conversion" in _TOOL_TITLES
+    def test_the_reference_nine_card_grid(self):
+        """V0.6.78 (visual-fidelity pass): the approved reference clearly
+        includes a Full Conversion Wizard card in the grid's final
+        position IN ADDITION to the hero CTA — the correction spec
+        documents this as the deliberate override of the old no-duplicate
+        rule. It must be a SECOND ENTRY POINT to the same wizard (the
+        existing convert_view dispatch), never a new feature."""
+        cards = _module_const(_HOME, "_QUICK_CARDS")
+        keys = [c[0] for c in cards]
+        # the reference order, exactly
+        assert keys == [
+            "summarization",
+            "pdf_to_markdown",
+            "translation",
+            "packets_tool",
+            "ocr_service",
+            "pdf_docx_cutter",
+            "image_extractor",
+            "markdown_styler",
+            "full_conversion",
+        ]
+        # the ninth card is the featured variant; the rest are not
+        assert [c[4] for c in cards] == [False] * 8 + [True]
+        # it routes through the EXISTING wizard entry (never a fork)
+        app = _strip_comments(_src(_APP))
+        assert "self.home_view.tool_clicked.connect(self.convert_view._on_tool_clicked)" in app
 
     def test_quick_tools_labels_match_toolcards(self):
-        groups = _module_const(_HOME, "_QUICK_GROUPS")
-        for _group, keys in groups:
-            for key in keys:
-                assert key in _TOOL_TITLES, f"{key} is not a TOOL_CARDS tool"
-        assert sorted(k for _g, ks in groups for k in ks) == sorted(
-            set(_TOOL_TITLES) - {"full_conversion"}
-        ), "Quick Tools must be exactly TOOL_CARDS minus full_conversion"
+        """Titles are never re-typed: the grid data leaves the title empty
+        and falls back to the TOOL_CARDS title (the single source of
+        truth)."""
+        cards = _module_const(_HOME, "_QUICK_CARDS")
+        for key, title, _desc, _icon, _feat in cards:
+            assert title == "", f"{key}: title must come from TOOL_CARDS, not be re-typed"
+            assert key in _TOOL_TITLES, f"{key} is not a TOOL_CARDS tool"
 
 
 # ════════════════════════════════════════════════════════════════════════════

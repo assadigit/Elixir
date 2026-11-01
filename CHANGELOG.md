@@ -31,6 +31,59 @@
 >    information invented; the commits remain the authoritative record.
 
 
+## V0.6.78 — visual-fidelity pass 3/N: the reference's hero + Quick Tools grid (the wide/shallow hero with the measured two-line typography + play/label/arrow capsule + ink-cropped still-life over soft sage washes; the single-heading nine-card grid with the pale arrow affordances and the dark-green Full Conversion Wizard feature card)
+
+The dashboard content commit of the visual-fidelity pass.
+
+**The hero** — re-measured against the reference at 1536×1024:
+- wide/shallow proportions (~29% of the content width, 230–340 px
+  clamped; 340 at the reference viewport) opening flush under the top
+  bar exactly as the reference draws it;
+- the measured typography stack: 14 px tracked sage eyebrow, the 41 px
+  semibold headline breaking exactly as the reference
+  ("Turn documents into" / "clear, structured knowledge." — a 545 px
+  wrap cap guarantees the two-line break), 22 px support copy, and the
+  capsule CTA (~258×57: 29 px radius, 16 px label, play glyph + label +
+  the trailing arrow painted inside the pill);
+- the still-life now CROPS the shipped asset to its ink bbox before
+  scaling (the PNG carries ~60 px transparent margins that made the
+  books render ~25% small) and runs near-full-bleed vertically;
+- the decoration switched from outline arcs to the reference's soft
+  FILLED translucent sage circles + the understated landscape curves
+  at the bottom edge.
+
+**The Quick Tools grid** — the reference's exact composition:
+- ONE heading row (sage zap glyph + "Quick Tools" + "View all tools →"
+  at the far right) — the PROCESSING/UTILITIES/AUDIO section headers
+  are retired; "View all tools →" routes to the existing full tool
+  dashboard (where the audio group lives on);
+- nine cards in the reference order (Summarization, Document →
+  Markdown, Translation, Packets of Knowledge, OCR Service, PDF/DOCX
+  Cutter, Image Extractor, Markdown Styler, Full Conversion Wizard),
+  each the reference's HORIZONTAL card: 26 px sage outline icon left,
+  15 px title + 12.5 px description, the pale circular arrow
+  affordance at the right; 120 px cards, 15 px gaps, three equal
+  columns (two at medium widths, one narrow — descriptions wrap, never
+  a single-line minimum, which had inflated the whole view 300 px past
+  its viewport);
+- the ninth card is the reference's dark forest-green Full Conversion
+  Wizard feature card — the correction spec's documented override of
+  the old no-duplicate rule: a SECOND ENTRY POINT routing through the
+  existing convert_view wizard dispatch, never a new feature.
+
+Offscreen 1536×1024 QA: hero text bands within 1–8 px of the reference
+(eyebrow 131..141 vs 132..142; headline 171..203/216..253 vs
+172..201/218..256; support 274..320 vs 277..330; CTA 342..395 vs
+349..406); grid rows at 518/653/788 vs the reference's 512/647/783,
+cards 120 px tall with 15 px gaps. Region similarity (≤8/255): overall
+72.0% (from 69.4%), grid 80.7%, heading 95.9%, MSE 3311 → 1726. A VLM
+side-by-side review scores the full page 92/100 perceived similarity.
+
+Tests: the grid pins rewritten for the nine-card reference order (the
+ninth-card override pinned as routing through the existing wizard
+entry), the CTA pin accepts the _HeroCTA subclass; 90 passed across
+the touched suites, `ruff check .` green.
+
 ## V0.6.77 — visual-fidelity pass 2/N: the reference's floating shell + sidebar IA + top-bar chrome + status strip land (frameless rounded window with working controls, 265 px rail with brand row + nine tools, the pill/Settings/divider/moon/min-max-close bar, the Ready/Light-Theme strip)
 
 The structure commit of the visual-fidelity correction pass. The window

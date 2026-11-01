@@ -52,6 +52,7 @@ them through the existing ``convert_view`` tool-key dispatch.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
@@ -64,20 +65,16 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from ui_qt.components.dashboard_primitives import QuickToolCard, SectionLabel
+from ui_qt.components.dashboard_primitives import QuickToolCard
+from ui_qt.components.icons import icon
 from ui_qt.theme import theme_manager
 from ui_qt.views.tool_dashboard import TOOL_CARDS
 
-# Hero illustration budget (V0.6.75, the reference comparison): the
-# visual earns the mockup's editorial split — ~45% of the hero interior —
-# scaling with the view between a compact floor and the source width
-# (632 px, so it only ever scales DOWN).
-_HERO_IMAGE_FRACTION = 0.45
-_HERO_IMAGE_MIN_W = 180
-_HERO_IMAGE_MAX_W = 430
-
-# The budget moves in 20 px steps so a resize drag recomposites on step
-# crossings only, not per pixel (the pixmap cache keys on the step).
+# Hero illustration budget (V0.6.78, visual-fidelity pass): the reference
+# renders the books/inkwell/quill still-life at effectively native scale —
+# the budget is the hero INTERIOR HEIGHT fit, capped at 55% of the view
+# width so narrow windows keep their text room (spec §7). The budget moves
+# in 20 px steps so a resize drag recomposites on step crossings only.
 _HERO_IMAGE_STEP = 20
 
 # Below this CONTENT width the illustration hides (spec §7 narrow-width
@@ -88,46 +85,39 @@ _HERO_IMAGE_STEP = 20
 # triggered this fix).
 _HERO_IMAGE_MIN_VIEW_W = 500
 
-# Quick Tools — the M1 Lucide glyph for each tool (spec §7: one outline
-# family; the emoji strings from TOOL_CARDS are display-only legacy and
-# are NOT consumed here). Key order follows the locked M2 IA (Q1).
-_QUICK_ICON: dict[str, str] = {
-    "summarization": "sigma",
-    "pdf_to_markdown": "file-text",
-    "translation": "globe",
-    "markdown_styler": "sparkles",
-    "packets_tool": "layers",
-    "ocr_service": "scan",
-    "pdf_docx_cutter": "scissors",
-    "image_extractor": "image",
-    "tts_service": "audio-lines",
-    "podcast_maker": "mic",
-    "transcribe": "headphones",
-}
-
-# The M2 IA groups (decision Q1): legacy PROCESS/TRANSFORM/EXTRACT map
-# onto Processing / Utilities; AUDIO stays Audio. full_conversion is
-# deliberately ABSENT (the hero owns it — no duplicate tile, spec §6).
-_QUICK_GROUPS: list[tuple[str, tuple[str, ...]]] = [
-    ("Processing", ("summarization", "pdf_to_markdown", "translation")),
-    (
-        "Utilities",
-        (
-            "markdown_styler",
-            "packets_tool",
-            "ocr_service",
-            "pdf_docx_cutter",
-            "image_extractor",
-        ),
-    ),
-    ("Audio", ("tts_service", "podcast_maker", "transcribe")),
+# Quick Tools (V0.6.78, visual-fidelity pass): the approved reference's
+# grid — EXACTLY nine cards in the reference order, each a horizontal
+# icon + title + description row with the pale circular arrow affordance;
+# the ninth is the deep forest-green Full Conversion Wizard feature card
+# (the spec's documented override of the old no-duplicate rule — it is a
+# SECOND ENTRY POINT to the same existing wizard, never a new feature).
+#
+# Titles come from the existing TOOL_CARDS data (the single source of
+# truth for exact user-facing names); the one-line descriptions use the
+# reference's wording, each verified truthful against the existing
+# feature (see the pairs below). Keys route through the EXISTING
+# convert_view tool-key dispatch — no re-implementation.
+_QUICK_CARDS: list[tuple[str, str, str, str, bool]] = [
+    # (key, TOOL_CARDS title, reference description, Lucide glyph, featured)
+    ("summarization", "", "Extract key points and get concise summaries.", "sigma", False),
+    ("pdf_to_markdown", "", "Convert any document to clean Markdown format.", "file-text", False),
+    ("translation", "", "Translate with high quality and natural language.", "globe", False),
+    ("packets_tool", "", "Cluster notes → synthesized knowledge packets.", "layers", False),
+    ("ocr_service", "", "Extract text from images and scanned documents.", "scan", False),
+    ("pdf_docx_cutter", "", "Split large files into smaller chunks.", "scissors", False),
+    ("image_extractor", "", "Extract images from PDF and documents.", "image", False),
+    ("markdown_styler", "", "Beautify and structure your Markdown files.", "sparkles", False),
+    ("full_conversion", "", "Transform books, documents and content into clear knowledge.", "wand", True),
 ]
 
-# Reflow thresholds (spec §6): 4 columns on wide windows, 3 at mid
-# widths, 2 on narrow ones (the 560 px minimum window leaves ≈330 px of
-# content after the rail — 2 compact columns fit there).
-_GRID_4_MIN_W = 1200
-_GRID_3_MIN_W = 760
+# Reflow thresholds (spec §6/P2): the reference's three columns at wide
+# content runs, two at medium, one on narrow windows.
+_GRID_3_MIN_W = 820
+_GRID_2_MIN_W = 520
+
+
+if TYPE_CHECKING:  # pragma: no cover — typing only
+    from PySide6.QtGui import QPixmap
 
 
 def _project_root() -> Path:
@@ -143,6 +133,88 @@ def _tool_meta() -> dict[str, tuple[str, str]]:
     return {key: (title, subtitle) for key, title, subtitle, _i, _c, _p in TOOL_CARDS}
 
 
+class _HeroCard(QFrame):
+    """The hero panel — paints the reference's soft translucent arcs and
+    the understated landscape curve BEHIND the children (the QSS fills
+    the warm cream ground; children — text, CTA, illustration — render
+    above this decoration).
+
+    The decoration is token-driven (sage / accent_soft at low alpha over
+    the ``bg_hero`` ground) and tracks the theme; nothing is a literal.
+    """
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setMinimumHeight(240)
+
+    def paintEvent(self, event) -> None:  # noqa: N802 (Qt naming)
+        super().paintEvent(event)
+        from PySide6.QtCore import QPointF, QRectF
+        from PySide6.QtGui import QColor, QPainter, QPainterPath
+
+        p = theme_manager.palette
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        w, h = float(self.width()), float(self.height())
+
+        # ── the landscape curves (bottom-right, understated) ──────────
+        hill = QPainterPath(QPointF(w * 0.30, h))
+        hill.quadTo(w * 0.62, h - h * 0.16, w * 0.86, h - h * 0.055)
+        hill.quadTo(w * 0.95, h - h * 0.02, w, h - h * 0.06)
+        hill.lineTo(w, h)
+        hill.closeSubpath()
+        painter.setPen(Qt.PenStyle.NoPen)
+        c1 = QColor(p.sage)
+        c1.setAlpha(30)
+        painter.setBrush(c1)
+        painter.drawPath(hill)
+        hill2 = QPainterPath(QPointF(w * 0.52, h))
+        hill2.quadTo(w * 0.78, h - h * 0.10, w, h - h * 0.13)
+        hill2.lineTo(w, h)
+        hill2.closeSubpath()
+        c2 = QColor(p.warning)
+        c2.setAlpha(18)
+        painter.setBrush(c2)
+        painter.drawPath(hill2)
+
+        # ── the soft translucent circles behind the books (the
+        # reference's filled geometric washes, not outline arcs) ───────
+        painter.setPen(Qt.PenStyle.NoPen)
+        cx, cy = w * 0.72, h * 0.34
+        for dia, alpha in ((h * 1.62, 26), (h * 1.14, 22), (h * 0.70, 18)):
+            ac = QColor(p.sage)
+            ac.setAlpha(alpha)
+            painter.setBrush(ac)
+            painter.drawEllipse(QRectF(cx - dia / 2, cy - dia / 2, dia, dia))
+        painter.end()
+
+
+class _HeroCTA(QPushButton):
+    """The reference's capsule CTA — the QSS pill (play icon + label via
+    the normal QPushButton affordances) plus the trailing arrow painted
+    inside the pill's right inset (palette-aware, re-rendered on theme
+    refresh)."""
+
+    def paintEvent(self, event) -> None:  # noqa: N802 (Qt naming)
+        super().paintEvent(event)
+        from PySide6.QtCore import QPointF
+        from PySide6.QtGui import QColor, QPainter, QPen
+
+        p = theme_manager.palette
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        pen = QPen(QColor(p.text_on_accent), 2.2)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        painter.setPen(pen)
+        x = self.width() - 24.0
+        y = self.height() / 2.0
+        painter.drawLine(QPointF(x - 9, y), QPointF(x, y))
+        painter.drawLine(QPointF(x - 5, y - 5), QPointF(x, y))
+        painter.drawLine(QPointF(x - 5, y + 5), QPointF(x, y))
+        painter.end()
+
+
 class HomeView(QWidget):
     """The M2 landing page: the Full Conversion hero + the Quick Tools
     grid (V0.6.75: the hero opens the page — the standalone purpose line
@@ -150,6 +222,10 @@ class HomeView(QWidget):
 
     start_requested = Signal()
     tool_clicked = Signal(str)
+    # V0.6.78: the reference's "View all tools →" — routes to the existing
+    # full tool-dashboard page (the legacy convert view carries every
+    # tool, including the audio group that left the sidebar/grid).
+    view_all_requested = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -157,18 +233,26 @@ class HomeView(QWidget):
         # Pixmap cache key (bucket, surface) — see _apply_hero_pixmap.
         self._hero_pm_key: tuple | None = None
 
+        # V0.6.78 (visual-fidelity pass): the reference's content insets —
+        # the hero opens flush under the top bar (0 top margin; the bar's
+        # bottom edge IS the hero's top edge, exactly as measured), 26 px
+        # left / 30 px right of the content area.
         root = QVBoxLayout(self)
-        root.setContentsMargins(24, 18, 24, 10)
-        root.setSpacing(14)
+        root.setContentsMargins(26, 0, 30, 0)
+        root.setSpacing(0)
+        self._hero_visual_w = 0
 
         # 1 — the Full Conversion hero (the single dominant action) —
         # V0.6.75: the reference mockup opens the page with it; the old
         # standalone purpose line is retired (the spec §1 brand line
         # already lives in the sidebar-bottom brand card, V0.6.71).
-        root.addWidget(self._build_hero())
+        self._hero = self._build_hero()
+        root.addWidget(self._hero)
 
         # 2 — the Quick Tools section (secondary tools only — the hero is
-        # never duplicated as a tile; spec §6 / decision Q7).
+        # never duplicated as a tile; spec §6 / decision Q7). V0.6.78: the
+        # reference's ~40 px breathing room after the hero.
+        root.addSpacing(40)
         root.addLayout(self._build_quick_tools())
 
         root.addStretch()
@@ -177,53 +261,70 @@ class HomeView(QWidget):
     # The hero
     # ══════════════════════════════════════════════════════════════════════
     def _build_hero(self) -> QFrame:
-        """Editorial split: text + CTA left, illustration right (spec §6).
-
-        V0.6.75 (the reference comparison): the hero sits in its own
-        TINTED container — ``QFrame#HeroCard``, the mockup's warm band one
-        step above the page ground (not the plain ``QFrame#Card`` surface)
-        — with the text column opening on the mockup's eyebrow, the
-        reference support line, and the play-glyph pill CTA.
+        """The reference's wide, shallow editorial hero (~1182×340 at the
+        1536×1024 viewport, aspect ≈3.48:1): eyebrow, the two-line
+        headline, the support copy, and the play+label+arrow capsule CTA
+        on the left; the books/inkwell/quill still-life filling the right
+        ~45% over soft translucent arcs and an understated landscape
+        curve (V0.6.78, visual-fidelity pass — measured from the
+        reference: eyebrow cap ~11 px at 40 px below the hero top,
+        headline ascender ~30 px over two ~46 px lines, support ~20 px,
+        CTA ~258×57 px capsule).
         """
-        hero = QFrame()
+        hero = _HeroCard()
         hero.setObjectName("HeroCard")
+        self._hero_card = hero
+        # V0.6.78: the still-life is near-full-bleed vertically (the
+        # reference's quill tip reaches the hero's top band and the books
+        # sit on the landscape curve) — only the TEXT column carries the
+        # hero's top inset; the visual runs to the panel's bottom edge.
         lay = QHBoxLayout(hero)
-        lay.setContentsMargins(28, 24, 28, 24)
-        lay.setSpacing(24)
+        lay.setContentsMargins(12, 37, 10, 0)
+        lay.setSpacing(18)
 
         text_col = QVBoxLayout()
-        text_col.setSpacing(10)
+        text_col.setSpacing(0)
 
-        # The reference hero's eyebrow (V0.6.75) — small, tracked-out,
-        # sitting above the heading (QLabel#Eyebrow QSS rule).
+        # The reference hero's eyebrow — small, tracked-out, sage.
         eyebrow = QLabel("WELCOME TO ELIXIR")
         eyebrow.setObjectName("Eyebrow")
         text_col.addWidget(eyebrow)
+        text_col.addSpacing(17)
 
         heading = QLabel("Turn documents into clear, structured knowledge.")
         heading.setObjectName("Hero")
         heading.setWordWrap(True)
+        # V0.6.78: the reference's text block is ~540 px wide at the
+        # 1536×1024 viewport — capping the wrap width guarantees the
+        # measured two-line break ("Turn documents into" / "clear,
+        # structured knowledge.") even when the surrounding layout has
+        # spare room (a wordWrap label's minimum is only its longest
+        # word, so without the cap a wide column renders ONE long line).
+        heading.setMaximumWidth(545)
         text_col.addWidget(heading)
+        text_col.addSpacing(12)
 
         support = QLabel(
             "Books, articles and documents — summarized, organized and ready for you to explore."
         )
         support.setObjectName("Support")
         support.setWordWrap(True)
+        support.setMaximumWidth(520)
         text_col.addWidget(support)
+        text_col.addSpacing(20)
 
-        text_col.addSpacing(6)
         # ONE clear primary action (spec §6). Decision Q7: the header
         # "✨ Process Wizard" button is gone; the hero owns the entry and
         # both landed in the same milestone so the primary entry never
         # gaps. The tooltip is the removed header button's exact copy.
-        self.cta_btn = QPushButton("Start Conversion")
+        self.cta_btn = _HeroCTA("Start Conversion")
         self.cta_btn.setObjectName("HeroPrimary")
         self.cta_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.cta_btn.setToolTip("Open the guided step-by-step conversion wizard")
         self._set_cta_icon()
         self.cta_btn.clicked.connect(self.start_requested.emit)
         text_col.addWidget(self.cta_btn, 0, Qt.AlignmentFlag.AlignLeft)
+        text_col.addSpacing(24)
         text_col.addStretch()
 
         lay.addLayout(text_col, 1)
@@ -247,7 +348,7 @@ class HomeView(QWidget):
 
         return hero
 
-    # ── the hero CTA glyph (V0.6.75, the reference comparison) ───────────
+    # ── the hero CTA glyph (V0.6.78, the reference comparison) ───────────
     def _set_cta_icon(self) -> None:
         """The reference CTA's play glyph, tinted to sit on the accent
         fill — re-tinted on theme refresh (the on-accent colour flips
@@ -256,8 +357,8 @@ class HomeView(QWidget):
 
         from ui_qt.components.icons import icon
 
-        self.cta_btn.setIconSize(QSize(15, 15))
-        self.cta_btn.setIcon(icon("play", theme_manager.palette.text_on_accent, 15))
+        self.cta_btn.setIconSize(QSize(16, 16))
+        self.cta_btn.setIcon(icon("play", theme_manager.palette.text_on_accent, 16))
 
     # ── the hero illustration (decision Q5) ──────────────────────────────
     def _flattened_hero_pixmap(self, max_w: int):
@@ -279,15 +380,21 @@ class HomeView(QWidget):
         src = QPixmap(str(src_path))
         if src.isNull():
             return None
-        w = min(max_w, src.width())
-        h = max(1, round(src.height() * w / src.width()))
+        # V0.6.78: the shipped asset carries wide transparent margins
+        # (ink bbox ≈ x[60,575] y[17,329] on the 632×330 canvas) — the
+        # reference's still-life FILLS its band, so crop to the ink (plus
+        # a 6 px cushion) before scaling; otherwise the visible books
+        # render ~25% smaller than the reference at the same box.
+        crop = self._asset_ink_crop(src)
+        w = min(max_w, crop.width())
+        h = max(1, round(crop.height() * w / crop.width()))
         flat = QImage(w, h, QImage.Format.Format_ARGB32_Premultiplied)
         flat.fill(QColor(theme_manager.palette.bg_hero))
         painter = QPainter(flat)
         painter.drawPixmap(
             0,
             0,
-            src.scaled(
+            crop.scaled(
                 w,
                 h,
                 Qt.AspectRatioMode.KeepAspectRatio,
@@ -297,17 +404,43 @@ class HomeView(QWidget):
         painter.end()
         return QPixmap.fromImage(flat)
 
+    @staticmethod
+    def _asset_ink_crop(src: QPixmap):
+        """The asset cropped to its alpha ink (+6 px cushion) — cached on
+        the class (the PNG is static; the scan is a one-off)."""
+        cached = getattr(HomeView, "_ink_crop", None)
+        if cached is not None and not cached.isNull():
+            return cached
+        img = src.toImage()
+        x0, y0, x1, y1 = img.width(), img.height(), 0, 0
+        for y in range(img.height()):
+            for x in range(img.width()):
+                if img.pixel(x, y) >> 24 > 12:
+                    x0 = min(x0, x)
+                    x1 = max(x1, x)
+                    y0 = min(y0, y)
+                    y1 = max(y1, y)
+        if x1 <= x0 or y1 <= y0:
+            HomeView._ink_crop = src
+            return src
+        pad = 6
+        x0 = max(0, x0 - pad)
+        y0 = max(0, y0 - pad)
+        x1 = min(img.width() - 1, x1 + pad)
+        y1 = min(img.height() - 1, y1 + pad)
+        HomeView._ink_crop = src.copy(x0, y0, x1 - x0 + 1, y1 - y0 + 1)
+        return HomeView._ink_crop
+
     def _apply_hero_pixmap(self) -> None:
-        """(Re)composite the illustration at the width the current view
+        """(Re)composite the illustration at the size the current hero
         supports, then apply the narrow-width hide rule.
 
-        V0.6.75 (the reference comparison): the budget is PROPORTIONAL —
-        ~45% of the view, clamped to 180–430 px — so the visual renders at
-        every realistic width. The old fixed 200/260 px buckets plus the
-        760 px hide cutoff left the user's ≈660 px content run with a
-        text-only hero (the "you didn't use hero_books_quill.png"
-        report). The pixmap stays cached per (budget step, card tint) so a
-        resize drag only recomposites on step or theme crossings.
+        V0.6.78 (visual-fidelity pass): the reference renders the
+        books/inkwell/quill at effectively NATIVE scale filling the
+        hero's height — the budget is now HEIGHT-driven (the hero's
+        interior height, capped at ~55% of the interior width so narrow
+        windows keep their text room), replacing V0.6.75's width
+        fraction. The pixmap stays cached per (budget step, card tint).
         """
         budget = self._hero_image_budget()
         key = (budget, theme_manager.palette.bg_hero)
@@ -315,88 +448,117 @@ class HomeView(QWidget):
             if budget == 0:
                 self._hero_pm_key = ("hidden",)
                 self._hero_visual.setVisible(False)
+                self._hero_visual_w = 0
                 return
             pm = self._flattened_hero_pixmap(budget)
             if pm is None:
                 self._hero_pm_key = ("missing",)
                 self._hero_visual.setVisible(False)
+                self._hero_visual_w = 0
                 return
             self._hero_visual.setPixmap(pm)
             self._hero_pm_key = key
+            self._hero_visual_w = pm.width()
         self._hero_visual.setVisible(budget > 0)
 
     def _hero_image_budget(self) -> int:
-        """Illustration width for the current view width: ~45% of the view
-        clamped to [_HERO_IMAGE_MIN_W, _HERO_IMAGE_MAX_W] in 20 px steps;
-        0 below the hide floor (spec §7 narrow-width rule)."""
+        """Illustration width for the current hero size: the interior
+        HEIGHT fit (the reference's native-scale still-life), capped at
+        55% of the interior width; 0 below the hide floor (spec §7
+        narrow-width rule)."""
         if self.width() < _HERO_IMAGE_MIN_VIEW_W:
             return 0
-        raw = min(
-            _HERO_IMAGE_MAX_W,
-            max(_HERO_IMAGE_MIN_W, round(self.width() * _HERO_IMAGE_FRACTION)),
-        )
+        # The height target is the reference-proportioned hero height
+        # (~29% of the content width, clamped 230–340) — NOT the card's
+        # live height, which the pixmap itself would inflate (a feedback
+        # loop: taller card → bigger budget → taller pixmap → …).
+        target_h = max(230, min(340, round(self.width() * 0.29)))
+        inner_h = target_h - 32
+        if inner_h < 110:
+            inner_h = 198  # pre-first-layout fallback (230 - 32)
+        by_h = round(inner_h * 504 / 318)  # the ink-crop's aspect
+        by_w = round(self.width() * 0.55)
+        raw = max(120, min(by_h, by_w))
         return raw // _HERO_IMAGE_STEP * _HERO_IMAGE_STEP
 
     # ══════════════════════════════════════════════════════════════════════
     # The Quick Tools grid (spec §6: compact, consistent, reflowing)
     # ══════════════════════════════════════════════════════════════════════
     def _build_quick_tools(self) -> QVBoxLayout:
-        """The Quick Tools section: a "Quick Tools" section heading, then
-        per-group ``SectionLabel`` headers + ``QuickToolCard`` rows fed
-        from TOOL_CARDS (minus full_conversion), reflowing with width."""
+        """The reference's Quick Tools section: ONE heading row — the sage
+        zap glyph + "Quick Tools" + the "View all tools →" action at the
+        far right — over the three-column card grid (V0.6.78: the old
+        per-group PROCESSING/UTILITIES/AUDIO section headers are retired;
+        the reference inserts nothing between the heading and the cards).
+        """
         section = QVBoxLayout()
-        section.setSpacing(10)
+        section.setSpacing(0)
 
+        head_row = QHBoxLayout()
+        head_row.setContentsMargins(3, 0, 3, 0)
+        head_row.setSpacing(10)
+        p = theme_manager.palette
+        zap = QLabel()
+        zap.setPixmap(icon("zap", p.sage, 20).pixmap(20, 20))
+        head_row.addWidget(zap, 0, Qt.AlignmentFlag.AlignVCenter)
         head = QLabel("Quick Tools")
         head.setObjectName("SectionHead")
-        section.addWidget(head)
+        head_row.addWidget(head)
+        head_row.addStretch(1)
+        self._view_all_btn = QPushButton("View all tools  →")
+        self._view_all_btn.setObjectName("ViewAllLink")
+        self._view_all_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._view_all_btn.setToolTip("Open the full tools page (every tool, including audio)")
+        self._view_all_btn.clicked.connect(self.view_all_requested.emit)
+        head_row.addWidget(self._view_all_btn, 0, Qt.AlignmentFlag.AlignVCenter)
+        section.addLayout(head_row)
+        section.addSpacing(22)
 
         self._quick_cards: list[QuickToolCard] = []
-        self._quick_headers: list[SectionLabel] = []
         self._quick_grid = QGridLayout()
-        self._quick_grid.setSpacing(10)
+        self._quick_grid.setSpacing(15)
         self._grid_cols = 0  # forces the first _relayout to lay everything out
         meta = _tool_meta()
-        for group_label, keys in _QUICK_GROUPS:
-            self._quick_headers.append(SectionLabel(group_label))
-            for key in keys:
-                title, subtitle = meta[key]
-                card = QuickToolCard(
-                    key, title, description=subtitle, icon_name=_QUICK_ICON[key]
-                )
-                card.clicked.connect(self.tool_clicked.emit)
-                self._quick_cards.append(card)
+        for key, title, desc, glyph, featured in _QUICK_CARDS:
+            card_title = title or meta.get(key, (key, ""))[0]
+            card = QuickToolCard(
+                key, card_title, description=desc, icon_name=glyph, featured=featured
+            )
+            card.clicked.connect(self.tool_clicked.emit)
+            self._quick_cards.append(card)
         section.addLayout(self._quick_grid)
         self._relayout_quick_grid()
         return section
 
     def _relayout_quick_grid(self) -> None:
-        """(Re)place the group headers + cards into the grid at the column
-        count the current width supports. Headers and cards are persistent
+        """(Re)place the cards into the grid at the column count the
+        current width supports — the reference's three equal columns,
+        two at medium widths, one on narrow windows. Cards are persistent
         widgets — they are re-added, never rebuilt (click routing + focus
         live on the card, so a reflow loses nothing)."""
         width = max(self.width(), 1)
-        cols = 4 if width >= _GRID_4_MIN_W else (3 if width >= _GRID_3_MIN_W else 2)
+        cols = 3 if width >= _GRID_3_MIN_W else (2 if width >= _GRID_2_MIN_W else 1)
         if cols == self._grid_cols:
             return
         self._grid_cols = cols
         while self._quick_grid.count():
             self._quick_grid.takeAt(0)  # items only — the widgets survive
-        row = 0
-        cards = {card.key: card for card in self._quick_cards}
-        for header, (_group_label, keys) in zip(
-            self._quick_headers, _QUICK_GROUPS, strict=True
-        ):
-            self._quick_grid.addWidget(header, row, 0, 1, cols)
-            row += 1
-            for i, key in enumerate(keys):
-                self._quick_grid.addWidget(cards[key], row + i // cols, i % cols)
-            row += (len(keys) + cols - 1) // cols
+        for i, card in enumerate(self._quick_cards):
+            self._quick_grid.addWidget(card, i // cols, i % cols)
         for c in range(cols):
             self._quick_grid.setColumnStretch(c, 1)
+        for r in range((len(self._quick_cards) + cols - 1) // cols):
+            self._quick_grid.setRowMinimumHeight(r, 120)
+            self._quick_grid.setRowStretch(r, 0)
 
     def resizeEvent(self, event) -> None:  # type: ignore[override]  # noqa: N802 (Qt naming)
         super().resizeEvent(event)
+        # V0.6.78: the hero keeps the reference's wide/shallow proportion
+        # (~29% of the content width — 340 px at the 1180 px reference
+        # content run), clamped 230–340 so narrow windows still breathe.
+        hero_h = max(230, min(340, round(self.width() * 0.29)))
+        if getattr(self, "_hero", None) is not None and self._hero.minimumHeight() != hero_h:
+            self._hero.setMinimumHeight(hero_h)
         # Spec §7: the illustration yields at narrow widths so the hero
         # text keeps its room (re-compositing when the size bucket
         # changes); spec §6: the grid reflows with width.

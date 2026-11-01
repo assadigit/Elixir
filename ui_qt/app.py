@@ -745,6 +745,9 @@ class ElixirWindow(QMainWindow):
         # Quick Tool cards route through the EXISTING convert_view
         # tool-key dispatch (no re-implementation).
         self.home_view.tool_clicked.connect(self.convert_view._on_tool_clicked)
+        # V0.6.78: "View all tools →" lands on the existing full tool
+        # dashboard page (the audio group lives there).
+        self.home_view.view_all_requested.connect(lambda: self.switch_to_page("convert"))
         _add_page("home", _wrap_scroll(self.home_view), active_key="home")
 
         # Page: Convert (the legacy tool-dashboard page — UNLISTED since
