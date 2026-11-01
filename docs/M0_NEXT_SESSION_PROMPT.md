@@ -4,9 +4,15 @@
 > handoff — is preserved in git history at commit `49872ac`). The permanent
 > reconnaissance record lives in `docs/M0_RECON_REPORT.md` (§8 now carries all
 > eight user decisions). Repo: https://github.com/assadigit/elixir · branch
-> `main` · M1 ended at `19c6c52` (test pin commit). Working tree at M1 end:
-> clean. VERSION is still `0.6.69` — the FIRST redesign bump (V0.6.70)
-> happens at the END of M2, per user decision Q8.
+> `main` · M1 ended at `19c6c52` (test pin commit); the M1 changelog + this
+> rolling prompt landed at `ab97cab`. **Published 2026-11-01 with the user's
+> explicit authorization:** `main` is now PUSHED to GitHub through the
+> release commit, and the M1 tree is live as the pre-release tag
+> **`V0.6.70-M1`** (`release_notes/V0.6.70-M1.md`; zip in the download
+> folder; marked pre-release — V0.6.69-windows stays Latest; `VERSION`
+> untouched). Working tree at publication: clean. VERSION is still `0.6.69`
+> — the FIRST redesign bump (V0.6.70) happens at the END of M2, per user
+> decision Q8.
 
 ## Read first
 
@@ -38,8 +44,10 @@ Conversion hero, compact Quick Tools grid, decluttered header,
 experimental destinations hidden from primary nav (code intact). The
 10-step Wizard itself is OUT OF SCOPE (later milestone). At the END of
 M2: bump `VERSION` → `0.6.70` + `CHANGELOG.md` `## V0.6.70` heading (no
-tag, no push, no GitHub Release — releases only after M4 with the user's
-explicit go-ahead, per AGENTS.md Rule 6 and decision Q8).
+tag, no push, no GitHub Release **in that session** — the 2026-11-01
+`V0.6.70-M1` pre-release was separately user-authorized; publishing
+V0.6.70 proper stays M4/user-authorized, per AGENTS.md Rule 6 and
+decision Q8).
 
 ## The eight user decisions (all locked — quote in the final report)
 
@@ -71,7 +79,9 @@ explicit go-ahead, per AGENTS.md Rule 6 and decision Q8).
 
 ## Your task this session (M2 scope)
 
-1. **Confirm state:** `git status` (expect clean), `git log -3`, read the
+1. **Confirm state:** `git status` (expect clean), `git log -3` (HEAD sits
+   above the `V0.6.70-M1` release commit; `origin/main` is current — the
+   pre-release tag already exists on the remote, do not touch it), read the
    M1 changelog entry. Run `pytest tests/test_m1_theme_tokens.py -q` —
    must be 22 passed + 5 skipped (libEGL sandbox) before you start.
 2. **The shell (sidebar + header):**

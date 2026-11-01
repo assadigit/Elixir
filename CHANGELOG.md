@@ -37,6 +37,13 @@
 > V0.6.69 tree — **no VERSION bump**. The first redesign bump is **V0.6.70 at
 > M2** (the dashboard milestone), then one bump per milestone. The M0 recon
 > report and the rolling next-session prompt live in `docs/`.
+>
+> **Pre-release provenance (2026-11-01):** with the user's explicit
+> authorization, the M1 tree was pushed to `main` and published as the
+> pre-release tag **`V0.6.70-M1`** (notes: `release_notes/V0.6.70-M1.md`;
+> zip in the download folder; marked pre-release, so V0.6.69-windows stays
+> Latest; `VERSION` untouched). The V0.6.70 number remains reserved for
+> M2's end per Q8.
 
 **The programme:** the approved UI/UX redesign package (spec:
 `ELIXIR_UI_UX_IMPLEMENTATION_PACKAGE.zip`, docs/M0_RECON_REPORT.md) replaces
