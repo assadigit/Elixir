@@ -1,66 +1,221 @@
-# Next Session Prompt — Elixir Session 2: M1 Visual Foundation
+# Next Session Prompt — Elixir Session 3: M2 Dashboard
 
-> Written at the end of Session 1 (M0 reconnaissance). The authoritative
-> findings live in `docs/M0_RECON_REPORT.md` — read it before starting.
-> Repo: https://github.com/assadigit/elixir · branch `main` · baseline HEAD
-> `11aa7ff` (V0.6.69). Working tree at M0 end: clean apart from the two new
-> untracked M0 docs (`docs/M0_RECON_REPORT.md`, `docs/M0_NEXT_SESSION_PROMPT.md`).
+> This is the ROLLING next-session prompt (M0's original content — the M1
+> handoff — is preserved in git history at commit `49872ac`). The permanent
+> reconnaissance record lives in `docs/M0_RECON_REPORT.md` (§8 now carries all
+> eight user decisions). Repo: https://github.com/assadigit/elixir · branch
+> `main` · M1 ended at `19c6c52` (test pin commit). Working tree at M1 end:
+> clean. VERSION is still `0.6.69` — the FIRST redesign bump (V0.6.70)
+> happens at the END of M2, per user decision Q8.
 
 ## Read first
 
-1. `docs/M0_RECON_REPORT.md` — the code-grounded map (architecture, inventory, theme analysis, baseline).
-2. `ELIXIR_UI_UX_IMPLEMENTATION_PACKAGE.zip` (repo root) → `docs/ELIXIR_FINAL_DASHBOARD_DESIGN_SPEC.md`, `AI_IMPLEMENTATION_INSTRUCTIONS.md`, `SESSION_WORKFLOW.md`.
-3. `AGENTS.md` — the 6 standing rules (content-agnostic, evidence-first, net-green, provenance, zip-per-release, release-per-version).
-4. `ui_qt/theme.py`, `ui_qt/components/icons.py`, `ui_qt/views/tool_dashboard.py`, `ui_qt/components/tool_card.py` — the exact files M1 touches.
+1. `docs/M0_RECON_REPORT.md` — the code-grounded map (§4 shell/nav, §5
+   feature inventory, §6 theme analysis, §7 wizard map, §8 the decisions).
+2. `CHANGELOG.md` → the `## Unreleased (M1 …)` heading — exactly what M1
+   delivered and the suite reference baseline.
+3. `ui_qt/theme.py` — the M1 foundation you build on: `Palette` (22 fields,
+   incl. the spec `icon` token), `FONT` (frozen dialog scale + the
+   dashboard scale `hero/section/tool/sidebar/body_lg`), `rgba()` helper,
+   `CODE_EDITOR`, and the M2-ready QSS rules (`QLabel#Hero/#Support/
+   #SectionHead/#ToolTitle/#SidebarLabel/#SidebarGroup`,
+   `QPushButton#HeroPrimary`).
+4. `ui_qt/components/dashboard_primitives.py` — `SectionLabel`,
+   `SidebarNavItem`, `QuickToolCard` (built in M1, deliberately UNWIRED —
+   wiring them in is M2's first move).
+5. `AGENTS.md` — the 6 standing rules (content-agnostic, evidence-first,
+   net-green, provenance, zip-per-release, release-per-version).
+6. Key shell files: `ui_qt/app.py` (`_build_top_bar()` ~L114–200,
+   `_build_content()` ~L342–441, `_setup_llm_lights_monitoring()`),
+   `ui_qt/views/convert_view.py` (`_switch_to_tab`, card routing),
+   `ui_qt/views/tool_dashboard.py` (`TOOL_CARDS` data),
+   `ui_qt/components/llm_lights.py`, `ui_qt/views/about_system_dialog.py`.
 
 ## Current milestone
 
-**M1 — Visual foundation ONLY.** Tokens, palette, typography, icons, shared styling, de-hardcoding. **No dashboard layout change, no sidebar, no wizard edits.**
+**M2 — Dashboard ONLY.** Fixed compact sidebar (icons + labels), Full
+Conversion hero, compact Quick Tools grid, decluttered header,
+experimental destinations hidden from primary nav (code intact). The
+10-step Wizard itself is OUT OF SCOPE (later milestone). At the END of
+M2: bump `VERSION` → `0.6.70` + `CHANGELOG.md` `## V0.6.70` heading (no
+tag, no push, no GitHub Release — releases only after M4 with the user's
+explicit go-ahead, per AGENTS.md Rule 6 and decision Q8).
 
-## M0 findings that shape M1 (short version)
+## The eight user decisions (all locked — quote in the final report)
 
-- PySide6 ≥ 6.6, Python 3.12, entry `main.py` → `ui_qt.app.run()`. **Import order is load-bearing: torch BEFORE PySide6. Do not reorder startup imports.**
-- Theme system is already centralized in `ui_qt/theme.py`: `SPACE`/`FONT`/`WEIGHT`/`RADIUS` tokens + frozen `Palette` dataclass + `_qss()` full-app QSS + `ThemeManager` singleton persisting `~/.elixir/ui_theme.json`. Current accent is **terracotta-amber** — must become the approved **muted forest green / sage / warm ivory / charcoal** tokens.
-- `Palette` fields: `bg_window, bg_surface, bg_elevated, bg_input, bg_input_hover, border, border_strong, text_primary, text_secondary, text_muted, text_on_accent, accent, accent_hover, accent_pressed, accent_soft, success, warning, error, info`. Add an `icon` token (spec) — ADD fields, do not rename existing ones (QSS + ~35 scattered call sites depend on them).
-- Inter fonts are **NOT bundled** (`assets/fonts/` has only Vazirmatn). `load_inter()` already handles `Inter-{Regular,Medium,SemiBold,Bold}.ttf` if dropped in — pending the user's Q4 decision.
-- Icon system: `ui_qt/components/icons.py` embeds **48 Lucide outline glyphs** rendered theme-aware (`icon(name, color, size)`). `ToolCard` already accepts icon *names* — swapping the dashboard's emoji for Lucide names is data-only in `TOOL_CARDS`.
-- Hardcoded colors outside theme.py: ~35 hex + 16 rgba() in 16 files (splash in `app.py` ~L1165–1191, tab-flash `#D8AA78` in `convert_view.py:276`, `step5_models.py` `#5B9BD5`/`#B0594F`, `settings/dependencies_page.py` ×8, service dialogs, `token_cost_dialog`, `chapter_selector_dialog`, `about_system_dialog`, `podcast_maker_view`, `step_header`, settings sections).
-- **Baseline (this sandbox):** full suite 8,346 P / 34 F / 29 E / 375 S; ~58 F+E are environment artifacts (headless sandbox lacks `libEGL.so.1`; `radon`/`ebooklib`/`genanki` were missing — installing them flipped their tests green). **5 genuine pre-existing failures at HEAD** (prompt-manifest drift ×1, eval-baseline drift ×2, VibeVoice timeout pin ×2) — all UI-unrelated; DO NOT fix them in M1. `ruff check` has 1 pre-existing error (`B023` in `core/tts/_vibevoice_subprocess.py:1053`) — leave it.
-- Open user decisions that may affect M1 scope: Inter bundling (Q4), hero illustration asset (Q5), dialog density (Q6). Wait for the user's answers; if unanswered, proceed with values-only palette work (independent of all three) and flag the rest.
+1. **Audio group IN** — sidebar/grid IA gains an Audio group (TTS Service,
+   Podcast Maker, Transcribe Service) alongside Processing/Utilities.
+2. **Experimental fallback = (a)** — an "Experimental tools…" section inside
+   the existing **About & System dialog**; drop-a-PDF keeps opening the
+   Queue view on drop (existing behavior preserved).
+3. **LLM lights: ONE compact aggregate dot stays in the header** (the
+   existing mini mode) — full details live in About & System.
+4. **Inter bundled** — done in M1 (`assets/fonts/`, auto-registered).
+5. **Hero visual = the supplied `assets/hero_books_quill.png`** at reduced
+   size. M1 inspection: 632×330 RGBA, ~55% of content pixels solid,
+   ivory + charcoal-olive ink, a soft halo quarter (p25 alpha=24), content
+   fills ~98% of the canvas. M2 composites it onto the hero surface
+   (flatten alpha against the surface colour or use QLabel pixmap), keeps
+   it ≤ ~260 px wide, hides/simplifies it at narrow widths, and re-judges
+   on the real background during the user's Windows QA. If it reads poorly,
+   the spec allows omitting it — do NOT force it.
+6. **Density: compact 11 px dialogs + larger dashboard type** — the M1
+   `FONT` split already encodes this; consume `hero/section/tool/sidebar/
+   body_lg` in the new dashboard surfaces and touch nothing dialog-facing.
+7. **Header "✨ Process Wizard" button: REMOVE once the hero CTA exists** —
+   land the hero and the removal in the SAME milestone so the primary
+   entry never gaps. The hero CTA label: **"Start Conversion"** (spec §6)
+   unless the M2 agent finds an exact established term in the codebase.
+8. **Versioning: one bump at M2 (V0.6.70), then per milestone** (M3 →
+   V0.6.71, M4 → V0.6.72).
 
-## Your task this session (M1 scope)
+## Your task this session (M2 scope)
 
-1. **Confirm state:** `git status` (expect only the two M0 docs untracked unless the user committed them), `git log -1`, then read the M0 report.
-2. **Palette swap** in `ui_qt/theme.py`: replace `LIGHT`/`DARK` values with the spec §3 tokens (light: bg `#F6F5F0`, surface `#FFFFFF`, surface-subtle `#EFEEE7`, text `#252923`/`#70756D`, border `#E2E1D9`, accent `#3F634D`, hover `#34543F`, accent-subtle `#E6EDE6`, icon `#626A60`; dark: bg `#20231F`, surface `#292D28`, subtle `#30362F`, text `#ECEEE8`/`#A8AEA3`, border `#3B423A`, accent `#91AD91`, hover `#A4BDA2`, accent-subtle `#354238`, icon `#B3BBAF`). Map onto existing fields (`bg_elevated`≈surface-subtle, `accent_soft`≈accent-subtle as rgba) and ADD `icon` + any missing semantic fields. Verify `text_on_accent` contrast for both accents. Keep `success/warning/error/info` semantics distinct from the new interactive green.
-3. **Type scale review (dashboard-facing only):** adjust hero/section sizes toward spec §4 (hero 26–30 px semibold, section 16–18, tool title 14–15, body 13–14) via the `FONT` namespace WITHOUT breaking dialog layouts — per the user's Q6 answer if given; otherwise conservative bump and note it.
-4. **Icons:** add the Lucide glyphs the sidebar/hero/grid will need in M2 (`home`, `headphones`/`audio-lines`, `file-output`, `zap` exists, plus any missing from: sigma, globe, wand, scan, scissors, image, layers, file-text, newspaper, mic, play, book) to `ICONS` in `icons.py` with consistent 24×24 stroke data. No emoji removal yet (that's M2 data-swap territory) except where trivially safe.
-5. **De-hardcode pass:** replace the ~35 hex/16 rgba scattered colors with palette refs where a palette field exists (splash, tab-flash, step5 groupbox border, dependencies page status colors → success/warning/error, etc.). Where a color has no token, add one rather than inventing another hex.
-6. **Reusable primitives (optional, only if time allows):** `SectionLabel`, `SidebarNavItem` (visual-only widget, unused yet), `QuickToolCard` compact card — placed in `ui_qt/components/` ready for M2. Do NOT wire them into the app yet.
-7. **Tests:** add a focused pytest (e.g. `tests/test_m1_theme_tokens.py`) pinning: both `Palette` dataclasses expose the spec hex values; `_qss()` compiles and contains the accent tokens for both modes; `theme_manager.toggle()` round-trips modes; `icons.icon("home", ...)` renders non-null offscreen. Follow the repo's hermetic/no-Qt-on-CI patterns (guard with the existing offscreen skip markers — see `tests/test_v0669_local_llm_lights.py` for the house style).
-8. **Validation:** `ruff check core/ utils/ ui_qt/ tests/` (no NEW errors vs the 1 pre-existing); run the full suite and compare against the M0 baseline (expect the same 5 pre-existing failures ± environment artifacts, ZERO new failures); offscreen-launch a screenshot harness if possible (`QT_QPA_PLATFORM=offscreen` + `QWidget.grab()`) for both themes, else state that visual verification is deferred to the user's Windows machine.
+1. **Confirm state:** `git status` (expect clean), `git log -3`, read the
+   M1 changelog entry. Run `pytest tests/test_m1_theme_tokens.py -q` —
+   must be 22 passed + 5 skipped (libEGL sandbox) before you start.
+2. **The shell (sidebar + header):**
+   - Replace the north `QTabWidget` in `ElixirWindow._build_content()`
+     with a fixed compact LEFT sidebar (icons + labels, ~200–220 px, always
+     visible, no collapse) + a `QStackedWidget` content area. Either a new
+     `ui_qt/components/sidebar.py` (preferred — build it on the M1
+     `SidebarNavItem`/`SectionLabel` primitives) or a West-positioned
+     restyled QTabWidget; prefer whichever keeps `_switch_to_tab`-style
+     navigation simplest.
+   - Sidebar IA: **Home** / **Processing** (Summarization, Document →
+     Markdown, Translation) / **Utilities** (Markdown Styler, Packets of
+     Knowledge, OCR Service, PDF/DOCX Cutter, Image Extractor) / **Audio**
+     (TTS Service, Podcast Maker, Transcribe Service) / **Settings** /
+     **About**. Verify every label against `TOOL_CARDS` + the M0 §5
+     inventory before shipping; exact user-facing names only.
+   - `QTabBar` QSS rules in `theme.py` stay (settings dialogs still use
+     tabs); add sidebar QSS (rail background, nav-item rules already live
+     in `dashboard_primitives.py` if you keep them self-styled).
+   - **Header (`_build_top_bar()`):** brand + subtitle, stretch, ONE
+     aggregate LLM dot (`LocalLLMLights` mini mode — see `llm_lights.py`
+     width-adaptive ladder; force/lock mini in the header), theme toggle,
+     settings, about IconBtns. REMOVE the "✨ Process Wizard" button
+     (decision Q7 — hero owns the entry). The "📚 Merge" compact button:
+     either keep it in the header (it is a real, functional action) or
+     surface Merge as a Quick Tools tile — inspect `core/pipeline/
+     multi_pdf_merge.py` + its current launcher first, then choose and
+     DOCUMENT the choice in the session report (do not delete the feature).
+   - **Llm-lights details → About & System:** the About & System dialog
+     gains the full `LocalLLMLights` widget (it already has a Refresh
+     scan; add the lights row + tooltips). Keep the poll loop in
+     `ElixirWindow._setup_llm_lights_monitoring()` feeding both sinks.
+3. **The home view (`ui_qt/views/home_view.py`, NEW):**
+   - Concise purpose line, then the **Full Conversion hero**: editorial
+     split — heading ("Turn documents into clear, structured knowledge."),
+     supporting copy (verify against real capabilities), one
+     `QPushButton#HeroPrimary` "Start Conversion" → the SAME modal
+     `WizardView` entry the removed header button used (reuse `app.py::
+     _open_wizard` / `convert_view._open_wizard` — do not fork the
+     opening logic), and the hero visual per decision Q5.
+   - **Quick Tools grid** beneath: `QuickToolCard`s fed from the existing
+     `TOOL_CARDS` data (drop the `full_conversion` entry — NO duplicate
+     hero tile; swap emoji strings for the M1 icon names: rocket, sigma,
+     file-text, globe, sparkles, layers/bookmark for packets — pick from
+     the 52 available glyphs), grouped Processing / Utilities / Audio with
+     `SectionLabel`s. Card click routing REUSES the existing
+     `convert_view` tool-key dispatch — do not re-implement launches.
+   - Keep the hero compact: at 1280×800 the Quick Tools section must begin
+     within the initial viewport.
+4. **Experimental destinations (decision Q2):**
+   - Queue / Output Scanner / Bullet Audit / Hallucination Audit leave the
+     primary navigation. KEEP the views and all routing code intact —
+     construct them lazily or keep them in the stack, unlisted.
+   - Add an "Experimental tools…" section to the **About & System dialog**
+     (four rows/buttons that switch to the hidden views via the navigation
+     facade). Keep `dropEvent` → Queue routing exactly as-is (the surface
+     stays reachable; the tab-flash highlight from M1 now uses the accent
+     token — if the tab bar is gone, route the flash to the About&System
+     entry or drop the flash; document which).
+   - `convert_view` keys (`batch_queue`, `output_scanner`,
+     `hallucination_audit`, quarantine) must keep working through the
+     facade — Packets output still opens Hallucination Audit.
+5. **Navigation facade:** adapt `convert_view._switch_to_tab` (it walks
+   `parent.tab_widget`) to the sidebar+stack world — same public helper
+   name/semantics, backed by the stacked index map. All existing callers
+   (queue badge refresh, quarantine auto-reload, `_on_tab_changed`
+   equivalents) must keep firing.
+6. **Theme-refresh coverage:** add the sidebar + home view to the
+   refresh-on-toggle path (the M0 §6 gap list — only 4 views + lights are
+   refreshed today; the M2 surfaces must join them).
+7. **Tests:** add `tests/test_m2_dashboard.py` (house source-pin style):
+   sidebar IA pin (groups + exact labels), hero present + single
+   "Start Conversion" CTA + NO Full Conversion tile in Quick Tools, the
+   four experimental views absent from the sidebar nav data but their
+   view modules + convert_view keys intact, About&System contains the
+   "Experimental tools" surface, llm-lights header usage is the mini/
+   aggregate mode, `_switch_to_tab` facade preserved. UPDATE the existing
+   tab-structure pins that M2 legitimately changes:
+   `test_v0600_internal_tabs_e2e.py`, `test_v1820314_ui_cta_crash.py`,
+   `test_v182046_p5_wizard_split.py`, `test_v182049_bk1_ui_threading.py`,
+   `test_v0610_b17_dialog_migration.py` — read each before touching; keep
+   their intent (behavior pins), update their mechanics (tab → stack).
+   Do NOT weaken a pin to make it pass; if a pin encodes user-visible
+   behavior that the approved redesign intentionally changes, rewrite it
+   to pin the NEW behavior and say so in the commit.
+8. **Version bump (decision Q8):** at the very end, `VERSION` → `0.6.70`,
+   `CHANGELOG.md` gains the `## V0.6.70` heading (convert the M1
+   "Unreleased" section into it or append a new section — keep both
+   records), `release_notes/V0.6.70.md` MAY be drafted but is NOT
+   published. NO tag, NO push, NO GitHub Release, NO zip — those are
+   M4/user-authorized only.
+9. **Validation:** `ruff check core/ utils/ ui_qt/ tests/` (only the 1
+   pre-existing B023); full suite vs the **M1 reference baseline: 8,374
+   passed / 28 failed / 29 errors / 380 skipped / 7 xfailed** — zero NEW
+   failures (the 28+29 are the documented pre-existing + libEGL
+   environment set; 5 genuine: prompt-manifest ×1, eval-baseline ×2,
+   VibeVoice timeout pins ×2 — still do not fix them). Visual QA on the
+   user's Windows machine is the authority: ship the session report with
+   a manual QA checklist (1280×800, 1440×900, min 560×400; both themes;
+   every tool opens; DnD → Queue; hero/CTA/illustration no-overlap;
+   sidebar labels readable; Quick Tools reflow).
 
 ## Acceptance criteria
 
-- Both themes use the approved token values app-wide; no terracotta remnants in QSS or dashboard-visible surfaces.
-- No existing `Palette` field renamed/removed (only additions); `ui_theme.json` persistence unchanged.
-- All 48+ icons render; new glyphs match Lucide stroke style.
-- Hardcoded-color count outside `theme.py` reduced to zero for theme-dependent colors (status colors via semantic tokens).
-- New token test green; full suite no worse than baseline; ruff no new errors.
-- NOTHING in `ui_qt/views/wizard_view.py`, `wizard_steps/`, `service_dialogs/` behavior changed; no dashboard layout change; no sidebar yet.
-- Commit(s) made with conventional messages (e.g. `ui: adopt muted forest/sage palette tokens for light and dark themes`, `ui: de-hardcode scattered widget colors into theme tokens`, `test: pin M1 theme tokens and QSS generation`) — **push only if the user has authorized push in this session**; otherwise report the local hash.
+- Fixed sidebar: icons + labels, grouped Home/Processing/Utilities/Audio/
+  Settings/About, active/hover/focus states via tokens; always visible.
+- Hero: single dominant action, one `HeroPrimary` CTA opening the SAME
+  WizardView, supplied illustration at reduced size (or omitted with a
+  documented reason), Quick Tools beginning in the initial 1280×800 view.
+- Quick Tools: compact grid, NO Full Conversion tile, only verified tools,
+  existing routing.
+- Header: brand + one aggregate LLM dot + theme/settings/about; wizard
+  button gone; Merge handled + documented.
+- Experimental four: absent from primary nav, present via About&System
+  "Experimental tools…", DnD→Queue unchanged, all code paths intact.
+- Both themes correct on every new surface; refresh-on-toggle covers them.
+- `VERSION` = 0.6.70 + changelog entry; no tag/push/release.
+- Suite no worse than the M1 baseline; ruff clean (minus the pre-existing
+  B023); new M2 pins green.
 
 ## Explicitly do NOT
 
-- Redesign the dashboard/sidebar (M2), the wizard (later milestone), or any dialog layout.
-- Delete or hide any feature, view, or tab (including Queue/Output Scanner/Bullet Audit/Hallucination Audit — hiding is M2 work).
-- Rename tools, change navigation, settings schemas, conversion behavior, or backend integrations.
-- Fix the 5 pre-existing test failures, the ruff B023, or anything outside `ui_qt/theme.py`, `ui_qt/components/icons.py`, the targeted de-hardcode files, new component files, and the new test file.
-- Introduce new pip dependencies (Inter TTFs are files, pending user Q4 approval).
-- Reset/rebase/force-push; publish releases (AGENTS.md Rule 6 releases happen only with explicit user authorization).
+- Redesign the Wizard's 10 steps, its dialogs, or any conversion/backend
+  behavior (visual token side-effects only, no logic).
+- Delete or disable any feature, view, or code path — hiding ≠ removing.
+- Rename tools beyond the exact existing user-facing labels.
+- Introduce new pip dependencies, mock data, fake statuses, recent-jobs,
+  presets, or onboarding flows.
+- Fix the 5 pre-existing failures, the ruff B023, or unrelated modules.
+- Reset/rebase/force-push; tag; publish a Release; push without explicit
+  authorization in that session.
 
 ## Required process
 
-1. Inspect `git status` first; preserve all user changes.
-2. Read source before editing; small reviewable commits; run tests before committing.
-3. End with the full end-of-session report per `SESSION_WORKFLOW.md` and REPLACE this file's content with the next session's prompt (M2 dashboard) including: exact files for the sidebar/hero/grid work, the tab→sidebar migration plan (`ElixirWindow._build_content`, `convert_view._switch_to_tab` facade, llm-lights relocation per user's Q3 answer), the experimental-destination hiding plan (fallback access per user's Q2 answer), and the test files that pin tab structure (`test_v0600_internal_tabs_e2e.py`, `test_v1820314_ui_cta_crash.py`, `test_v182046_p5_wizard_split.py`, `test_v182049_bk1_ui_threading.py`, `test_v0610_b17_dialog_migration.py`).
+1. `git status` first; preserve user changes; read before editing.
+2. Small reviewable commits (e.g. `ui: build the fixed sidebar shell`,
+   `ui: add the Full Conversion hero home view`, `ui: compact Quick Tools
+   grid with audio group`, `ui: hide experimental destinations behind
+   About & System fallback`, `ui: reduce the header to brand + aggregate
+   dot + essentials`, `test: pin the M2 dashboard structure`, `chore:
+   bump VERSION to 0.6.70 for the dashboard milestone`) — tests before
+   committing; diff review each time.
+3. End with the full end-of-session report per `SESSION_WORKFLOW.md` and
+   REPLACE this file's content with the Session 4 (M3 polish + regression)
+   prompt, including the QA matrix results, the new baseline numbers, and
+   the Windows visual-QA checklist outcome.
 4. Record exact commands + outcomes; never say "tested" without the command.

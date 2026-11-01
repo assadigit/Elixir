@@ -31,6 +31,82 @@
 >    information invented; the commits remain the authoritative record.
 
 
+## Unreleased (M1 — UI/UX redesign session 2) — the visual foundation: the approved forest-green/sage/ivory token system in both themes, Inter bundled, every scattered colour literal de-hardcoded.
+
+> **Versioning note (user decision §8 Q8):** M1 lands on `main` inside the
+> V0.6.69 tree — **no VERSION bump**. The first redesign bump is **V0.6.70 at
+> M2** (the dashboard milestone), then one bump per milestone. The M0 recon
+> report and the rolling next-session prompt live in `docs/`.
+
+**The programme:** the approved UI/UX redesign package (spec:
+`ELIXIR_UI_UX_IMPLEMENTATION_PACKAGE.zip`, docs/M0_RECON_REPORT.md) replaces
+the terracotta-amber "Editorial Quiet" language with the muted forest-green /
+sage / warm-ivory / charcoal direction — "Knowledge, distilled into clarity."
+M1 is the visual foundation only: tokens, palette, typography, icons, shared
+styling, de-hardcoding. No dashboard layout, sidebar, hero, or wizard change
+(that is M2+, per the milestone gates).
+
+**What changed (commits `0bf03cb`…`19c6c52`, on top of the M0 docs/fonts/assets
+baseline `49872ac`…`d7881ac`):**
+
+  - **Palette (spec §3, both modes):** light bg `#F6F5F0` / surface `#FFFFFF`
+    / surface-subtle `#EFEEE7` / text `#252923`·`#70756D` / border `#E2E1D9` /
+    accent `#3F634D`·hover `#34543F` / accent-subtle `#E6EDE6` / icon `#626A60`;
+    dark bg `#20231F` / surface `#292D28` / subtle `#30362F` / text
+    `#ECEEE8`·`#A8AEA3` / border `#3B423A` / accent `#91AD91`·hover `#A4BDA2` /
+    accent-subtle `#354238` / icon `#B3BBAF`. The spec `icon` token is a purely
+    additive `Palette` field; all 21 pre-M1 field names are pinned unchanged.
+    Dark `success` shifts `#94B088` → `#A9C178` so the semantic green stays
+    distinct from the new sage accent.
+  - **Typography (user decision Q6):** the compact 11px dialog scale is FROZEN
+    (dialogs/wizard/settings re-flow nothing); the dashboard-facing scale is
+    added — `hero 28 / section 17 / tool 14 / sidebar 12 / body_lg 13` — plus
+    the M2-ready QSS rules (`QLabel#Hero/#Support/#SectionHead/#ToolTitle/
+    #SidebarLabel/#SidebarGroup`, `QPushButton#HeroPrimary`).
+  - **Inter bundled (Q4):** the 4 static TTFs from the official Inter 4.1
+    release (`extras/ttf/`, byte-unmodified) + the SIL OFL 1.1 license;
+    `load_inter()` auto-registers them, QSS resolves Inter first, Segoe UI
+    fallback unchanged.
+  - **Icons:** `home`, `headphones`, `audio-lines` glyphs added (Lucide
+    24×24 stroke family, nothing removed); `icon_for_mode()` now uses the
+    palette `icon` token.
+  - **De-hardcode (the big sweep):** every theme-dependent colour literal
+    outside `theme.py` is gone — the startup splash (was fixed slate/amber —
+    now follows the persisted palette), the PDF drop overlay, the tab flash,
+    step5's arch description / active-groupbox border / VRAM lock, the whole
+    dependencies dashboard (status dots, badges, checking/success/error
+    summaries → semantic token tints), TTS connectivity dots, GPU status
+    banners, the packets mode warning, token-cost caption/warning/secondary
+    text, podcast voice warning, prompts-page HTML code chips, the neutral
+    hint-box tints (→ surface-subtle), the dark log panels (→ a centralised
+    `CODE_EDITOR` namespace), and ~20 three-digit gray literals (`#666/#888/
+    #999`) the M0 census regex had missed. A `rgba()` helper derives QSS/HTML
+    translucent washes from palette hex. Census pinned to ZERO by test.
+  - **M2 primitives (unwired):** `ui_qt/components/dashboard_primitives.py` —
+    `SectionLabel`, `SidebarNavItem`, `QuickToolCard`, following the ToolCard
+    house pattern; pinned unused by any view.
+  - **Hero asset staged (Q5):** `assets/hero_books_quill.png` (inspected:
+    ~55% solid ivory+charcoal-olive ink content, soft halo quarter; M2
+    composites it at reduced size and re-judges on the real background).
+
+**The pins:** `tests/test_m1_theme_tokens.py` — 22 hermetic source/AST pins
+(spec hex values; additive `icon` field; WCAG contrast floors: on-accent
+≥ 6.5:1, primary-on-window ≥ 13:1, secondary-on-surface ≥ 4.7:1 both modes;
+frozen dialog type scale; QSS rules; zero terracotta remnants; icon superset;
+zero-literal census; Inter bundling; primitives unwired) + 5 Qt-behaviour pins
+that skip on the libEGL sandbox and run on Windows.
+
+**Suite state (sandbox, this session):** 8,374 passed / 28 failed / 29 errors /
+380 skipped / 7 xfailed in 275 s — **zero NEW failures vs the M0 baseline**
+(34 F / 29 E); 6 previously-failing environment artifacts turned green
+(radon/ebooklib/genanki installed during M0). The 5 genuine pre-existing
+failures at HEAD are unchanged and untouched (prompt-manifest drift ×1,
+eval-baseline drift ×2, VibeVoice timeout pins ×2). `ruff check`: only the 1
+pre-existing `B023`. Visual QA is deferred to the user's Windows machine
+(the sandbox cannot instantiate Qt widgets — no libEGL); the M2/M3 milestones
+own the screenshot pass.
+
+
 ## V0.6.69 — the startup "Ollama not running" error dialog is RETIRED, replaced by live status lights that actively watch every locally-famous LLM client (Ollama, llama.cpp, LM Studio) and go green the moment one answers.
 
 **The report (the V0.6.68 follow-up):** "do not show the error of ollama
