@@ -31,19 +31,107 @@
 >    information invented; the commits remain the authoritative record.
 
 
-## Unreleased (M1 — UI/UX redesign session 2) — the visual foundation: the approved forest-green/sage/ivory token system in both themes, Inter bundled, every scattered colour literal de-hardcoded.
+## V0.6.70 — the dashboard ships: the fixed sidebar replaces the tab bar, the Full Conversion hero owns the primary entry, compact Quick Tools replace the 4×3 card grid, and the experimental four move behind About & System (M2 — on the M1 visual foundation)
 
-> **Versioning note (user decision §8 Q8):** M1 lands on `main` inside the
-> V0.6.69 tree — **no VERSION bump**. The first redesign bump is **V0.6.70 at
-> M2** (the dashboard milestone), then one bump per milestone. The M0 recon
-> report and the rolling next-session prompt live in `docs/`.
+> **Versioning note (user decision §8 Q8):** V0.6.70 is the dashboard
+> milestone's bump (M1 landed on `main` inside the V0.6.69 tree with **no
+> bump**, pre-released as `V0.6.70-M1`). Next: one bump per milestone
+> (M3 → V0.6.71, M4 → V0.6.72). GitHub Releases stay user-authorized
+> (AGENTS.md Rule 6) — this entry is the source-tree record only.
+>
+> **Provenance:** the M2 build was executed twice. The first attempt
+> (Session 3) was lost with its sandbox before anything was pushed — the
+> direct cause of AGENTS.md **Rule 7** (commit-and-push incrementally,
+> added at V0.6.69 with the user's authorization; commits below were
+> pushed one-by-one). The M2 design decisions that died with that sandbox
+> were re-decided and are recorded below.
 >
 > **Pre-release provenance (2026-11-01):** with the user's explicit
 > authorization, the M1 tree was pushed to `main` and published as the
 > pre-release tag **`V0.6.70-M1`** (notes: `release_notes/V0.6.70-M1.md`;
 > zip in the download folder; marked pre-release, so V0.6.69-windows stays
-> Latest; `VERSION` untouched). The V0.6.70 number remains reserved for
+> Latest). The V0.6.70 number remains reserved for
 > M2's end per Q8.
+
+**M2 — the dashboard (commits `2b19ef9`…`4e6be04`, every commit pushed
+at once per Rule 7):**
+
+  - **The shell:** the north `QTabWidget` is retired — a fixed compact
+    210 px LEFT rail (new `ui_qt/components/sidebar.py`, built on the M1
+    `SectionLabel`/`SidebarNavItem` primitives; IA per decision Q1:
+    Home / Processing / Utilities / Audio + a Settings-About footer,
+    every label the exact `TOOL_CARDS` user-facing name) + a
+    `QStackedWidget` content area. All five former tab pages stay in the
+    stack, code intact. `QFrame#SidebarRail` QSS rule (surface rail +
+    hairline right edge, both themes).
+  - **The home view (new `ui_qt/views/home_view.py`, the landing page):**
+    purpose line (the spec §1 brand line) + the Full Conversion hero —
+    editorial split on the calm `#Card` surface, spec §6 copy verbatim,
+    ONE `QPushButton#HeroPrimary` "Start Conversion" that opens the SAME
+    modal WizardView via the window's existing `_open_wizard` (never
+    forked), and the supplied hero illustration (Q5) at ≤ 260 px with its
+    soft alpha halo FLATTENED onto the current surface token, hidden
+    below 900 px content width, re-judged on the user's Windows QA.
+  - **Quick Tools:** a compact grid fed from the EXISTING `TOOL_CARDS`
+    data minus `full_conversion` (no duplicate hero tile), grouped
+    Processing / Utilities / Audio with `SectionLabel`s, emoji icons
+    swapped for Lucide glyphs, and a reflowing column count (4 / 3 / 2 by
+    width). Card clicks route through the existing `convert_view`
+    tool-key dispatch.
+  - **The experimental four (decision Q2):** Queue / Output Scanner /
+    Bullet Audit / Hallucination Audit are unlisted from primary
+    navigation but fully intact — reachable via a new "Experimental
+    tools" section in About & System (four rows → `open_page` signal →
+    the navigation facade), via their existing routes (drop-a-PDF →
+    Queue, which now also OPENS the queue page; Packets output →
+    Hallucination Audit), and via the facade keys
+    (`batch_queue`/`output_scanner`/`quarantine`/`hallucination_audit`).
+  - **The header (decisions Q3 + Q7):** the "✨ Process Wizard" button is
+    REMOVED (the hero owns the entry; both landed in this milestone so it
+    never gaps); the LLM lights are LOCKED to the existing MINI mode (one
+    aggregate dot — the V0.6.69 width-adaptive ladder is retired with
+    it), and the About & System dialog gains the FULL per-client lights
+    fed by the same poll loop (latest-verdict snapshot on open +
+    live updates).
+  - **The navigation facade:** `convert_view._switch_to_tab` keeps its
+    public name/semantics, now backed by `ElixirWindow.switch_to_page` +
+    the stacked page index; the queue-badge refresh and
+    quarantine-auto-reload hooks keep firing via the stack's
+    `currentChanged`.
+  - **The two documented M2 decisions** (re-decided after the Session-3
+    loss, per the prompt's instruction to choose + document):
+    1. **Merge stays in the header** — a real cross-output action (a
+       folder-picker flow over past conversion outputs, not a tool
+       dialog); keeps the W-b12 worker-threading source pins green
+       unchanged, and keeps the Quick Tools grid strictly
+       `TOOL_CARDS`-fed. The Quick-Tools-tile alternative was rejected.
+    2. **The M1 tab-flash highlight is dropped** (not re-routed to the
+       About & System button) — a stacked page switch swaps the entire
+       content area, so the destination is unmissable without a 24 px
+       tab-label flash.
+  - **Theme-refresh coverage:** the sidebar rail + nav items and the home
+    view (hero illustration re-flattened, Quick Tool cards re-tinted)
+    join the refresh-on-toggle path.
+
+**M2 pins + suite state (sandbox, this session):** NEW
+`tests/test_m2_dashboard.py` — 21 hermetic source pins (sidebar IA +
+exact labels cross-checked against `TOOL_CARDS`; the experimental four
+absent from nav data but intact everywhere; one hero CTA reusing
+`_open_wizard`, no `full_conversion` tile; header reduction + mini lock +
+Merge; the facade + preserved hooks; token cleanliness). The M1 pins
+that M2 legitimately changes were rewritten per the handoff rule
+(primitives-unwired → wired-by-dashboard-surfaces; tab-flash → facade),
+and the V0.6.69 lights pins were rewritten for the mini lock (decision
+Q3). Full suite: **8,403 passed / 27 failed / 29 errors / 380 skipped**
+vs the session baseline 8,382/27/29/380 — **zero NEW failures** (the
+27+29 are the documented 5 genuine pre-existing + the libEGL environment
+class, identical IDs), +21 = the new M2 pins. `ruff check`: only the 1
+pre-existing `B023`. Visual QA + screenshots remain the user's Windows
+machine (M3 owns that pass; the sandbox has no libEGL).
+
+**M1 — the visual foundation (pre-released 2026-11-01 as `V0.6.70-M1`;
+commits `0bf03cb`…`19c6c52`, on top of the M0 docs/fonts/assets baseline
+`49872ac`…`d7881ac`):**
 
 **The programme:** the approved UI/UX redesign package (spec:
 `ELIXIR_UI_UX_IMPLEMENTATION_PACKAGE.zip`, docs/M0_RECON_REPORT.md) replaces
