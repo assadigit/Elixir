@@ -207,6 +207,26 @@ def _check_data_files(fail: list[str]) -> None:
         if not p.is_file():
             fail.append(f"data fonts: missing {p}")
 
+    # UI image assets (V0.6.72) — the hero illustration and the sidebar
+    # brand-card panorama. Both load through silent-degradation fallbacks
+    # (missing file → text-only hero), so a packaging regression that drops
+    # them passes every other check while the UI quietly loses its only
+    # images — the exact "no image assets in the UI" report class from the
+    # M3 session. Size floor: the real files are 92–195 KB; a truncated or
+    # placeholder-sized copy (<10 KB) fails too.
+    for image, floor_kb in (
+        ("hero_books_quill.png", 10),
+        ("botanical_landscape.png", 10),
+    ):
+        p = resource_path("assets") / image
+        if not p.is_file():
+            fail.append(f"data images: missing {p}")
+        elif p.stat().st_size < floor_kb * 1024:
+            fail.append(
+                f"data images: {image} is only {p.stat().st_size} bytes "
+                f"(< {floor_kb} KB) — truncated or placeholder?"
+            )
+
     # Segmentation patterns — parsed as JSON at runtime.
     patterns = resource_path("utils") / "patterns.json"
     try:

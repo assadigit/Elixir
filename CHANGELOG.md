@@ -31,6 +31,29 @@
 >    information invented; the commits remain the authoritative record.
 
 
+## V0.6.72 — the selftest now guards the image assets: a packaging regression that drops the hero or the brand-card panorama fails the installer build instead of silently shipping a text-only UI
+
+Follows V0.6.71's asset audit. Both image assets load through
+silent-degradation fallbacks (missing file → text-only hero, missing
+panorama → text-only brand card) — correct runtime behaviour, but it
+meant a packaging regression that dropped `assets/*.png` from the
+bundle would pass every existing check (VERSION, prompts, fonts,
+patterns, lexicon, config, tools) while the UI quietly lost its only
+images. That is the exact "no image assets in the UI" report class
+from the user's M3 session.
+
+`utils/selftest.py`'s `_check_data_files` now asserts both
+`assets/hero_books_quill.png` and `assets/botanical_landscape.png`
+exist **and** are non-trivial (≥ 10 KB — the real files are 92–195 KB,
+so a truncated or placeholder-sized copy fails too). Verified in
+source mode: pass with the assets present, `[FAIL] data images:
+missing …` with the hero temporarily hidden. The check runs in both
+the source selftest (`python main.py --selftest`) and the packed
+`Elixir.exe --selftest` inside every Windows installer build, so the
+next regression of this class dies in CI instead of on a user's
+machine. 65 launcher/visibility tests pass; ruff clean.
+
+
 ## V0.6.71 — the assets build: the hero illustration and the sidebar brand card reach a Windows installer for the first time, and the top bar finally matches its own stylesheet rule (M3 asset audit, user report "no image assets in the UI")
 
 > **Versioning policy change (user instruction, M3 session):** the user
