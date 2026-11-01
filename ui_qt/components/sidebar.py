@@ -25,7 +25,7 @@ literals — the M1 zero-literal census covers this file).
 
 from __future__ import annotations
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QFrame,
     QScrollArea,
@@ -135,8 +135,13 @@ class Sidebar(QFrame):
         scroll.setWidget(nav_host)
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(QScrollArea.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setVerticalScrollBarPolicy(QScrollArea.ScrollBarPolicy.ScrollBarAsNeeded)
+        # ScrollBarPolicy is a Qt-namespace enum — it is NOT exposed as a
+        # QScrollArea class attribute on PySide6 >= 6.11 (AttributeError at
+        # launch on the user's Windows run, V0.6.70 pre-release smoke), so
+        # the address must be Qt.ScrollBarPolicy.* (Shape above IS a QFrame
+        # class enum and stays as-is).
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         root.addWidget(scroll, 1)
 
         # ── pinned footer (Settings / About) ──────────────────────────
