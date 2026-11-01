@@ -553,6 +553,7 @@ class ElixirWindow(QMainWindow):
         last = getattr(self, "_llm_last_statuses", None)
         if last:
             dlg.apply_llm_statuses(last)
+        # V18.20.4.5 (W-b9): delete the dialog tree on close — each open used to leak a hidden widget tree.
         dlg.setAttribute(Qt.WA_DeleteOnClose, True)
         self._about_dialog = dlg
         dlg.exec()

@@ -492,15 +492,31 @@ class TestV0669AppSourcePins:
         assert "self._llm_poll_timer.stop()" in _APP_SRC
 
     def test_resize_adapts_and_theme_toggles_repaint(self):
+        """M2 evolution (decision Q3): the hooks survive, the ADAPTATION is
+        retired — the header lights are LOCKED to the existing MINI mode
+        (one aggregate dot) and the full per-client lights live in the
+        About & System dialog. The V0.6.69 measured-budget ladder
+        (bar.minimumSizeHint with lights hidden) was removed WITH the
+        lock; this pin was rewritten at M2 to pin the lock."""
         assert "def resizeEvent(self, event) -> None:" in _APP_SRC
         assert "def _adapt_llm_lights(self) -> None:" in _APP_SRC
         assert "self.llm_lights.refresh_theme()" in _APP_SRC
-        # the budget is MEASURED (bar minimumSizeHint with lights hidden)
-        assert "bar.minimumSizeHint().width()" in _APP_SRC
+        # the M2 mini lock: a 0 px budget forces the ladder's floor
+        assert "lights.set_budget(0)" in _APP_SRC
 
     def test_budget_cushion_and_fallback(self):
-        # the measured-static-min fallback for the pre-polish phase
-        assert "(self._topbar_static_min or 700)" in _APP_SRC
+        """M2 evolution (decision Q3): the V0.6.69 measured-static-min
+        fallback (``self._topbar_static_min or 700`` + the 22 px cushion)
+        is RETIRED with the mini lock — no measurement remains. The full
+        lights (rich mode, forced budget) live in the About & System
+        dialog, fed by the same poll loop."""
+        assert "_topbar_static_min" not in _APP_SRC, "the measuring ladder is retired (Q3)"
+        _about_src = (
+            _project_root / "ui_qt" / "views" / "about_system_dialog.py"
+        ).read_text(encoding="utf-8")
+        assert "build_status_lights" in _about_src
+        assert "self.llm_lights.set_budget(1000)" in _about_src
+        assert "apply_llm_statuses" in _APP_SRC  # the poll loop feeds both sinks
 
 
 class TestV0669MonitorSourcePins:
