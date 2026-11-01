@@ -214,7 +214,10 @@ class ElixirWindow(QMainWindow):
         theme_manager.toggle()
         self._refresh_top_bar_icons()
         self.convert_view.refresh_theme()
-        # M2: the fixed rail's nav items re-tint from the current palette.
+        # M2: the home view re-flattens the hero illustration against the
+        # new surface colour; the fixed rail's nav items re-tint.
+        if hasattr(self, "home_view"):
+            self.home_view.refresh_theme()
         if hasattr(self, "sidebar"):
             self.sidebar.refresh_theme()
         if hasattr(self, "queue_view"):
@@ -377,15 +380,27 @@ class ElixirWindow(QMainWindow):
             scroll.setWidget(view)
             return scroll
 
-        # Page: Convert (the legacy tool-dashboard page — kept intact: it
-        # hosts the controller bridge + progress panel + completion
-        # handling. Until the M2 home view lands, it IS the landing page,
-        # so the sidebar's Home item routes here.)
+        # Page: Home (M2 landing — purpose line + Full Conversion hero;
+        # the Quick Tools grid lands with the grid commit). The convert
+        # view is CONSTRUCTED first: the home view's hero CTA and tool
+        # cards route through the existing wizard entry + tool dispatch.
         self.convert_view = ConvertView(self.controller)
-        _add_page("convert", _wrap_scroll(self.convert_view), active_key="home")
-        # Build-1 bridge: "home" aliases the convert page (the real home
-        # view arrives with the hero commit and takes the key over).
-        self._page_index["home"] = self._page_index["convert"]
+        from ui_qt.views.home_view import HomeView
+
+        self.home_view = HomeView()
+        # Decision Q7: the hero CTA opens the SAME modal WizardView the
+        # removed header button used — connect, never fork.
+        self.home_view.start_requested.connect(self._open_wizard)
+        # Quick Tool cards route through the EXISTING convert_view
+        # tool-key dispatch (no re-implementation).
+        self.home_view.tool_clicked.connect(self.convert_view._on_tool_clicked)
+        _add_page("home", _wrap_scroll(self.home_view), active_key="home")
+
+        # Page: Convert (the legacy tool-dashboard page — UNLISTED since
+        # the home view took over as the landing page; kept intact as the
+        # controller-bridge + progress-panel + completion host, and still
+        # reachable through the navigation facade.)
+        _add_page("convert", _wrap_scroll(self.convert_view))
 
         # Page: Queue (batch processing — unlisted, decision Q2)
         self.queue_view = QueueView(self.controller)
