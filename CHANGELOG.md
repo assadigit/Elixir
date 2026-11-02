@@ -31,6 +31,98 @@
 >    information invented; the commits remain the authoritative record.
 
 
+## V0.6.82 — UI/UX correction Round 2: the ink-calibrated dashboard (every dashboard font re-derived from the reference's glyph-ink WIDTHS, not AA-spread heights), the hero rhythm landing within 2-4 px of the reference's ink positions, the reference's airy CTA capsule (painted deterministically — the QApplication-level QSS paints QPushButton squares on three independent renderers), the retired-grid-column stretch fix (2/1-column reflows were rendering beside a dead stretch-1 column), and the artwork's full-bleed right edge
+
+The Round-2 field report: *"Your preview of the UI looks a lot more like
+the visual reference, but the implementation in the Python is different
+from it."* — the previous passes tuned the dashboard against ESTIMATED
+glyph sizes; this pass re-measured everything against the approved
+reference with ink-bbox calibration (the pixel extents of the SAME
+strings rendered side by side) and closed the remaining gaps.
+
+- **Ink-calibrated typography** (`ui_qt/theme.py`): the V0.6.76 font
+  scale read the reference's soft antialiasing as smaller glyphs than it
+  paints. Width calibration (widths are authoritative; ink heights carry
+  ±2 px of AA spread): card titles 15 → 17 ("Summarization" ink 119 px
+  vs 105), card descriptions 11.5 → 13, nav labels 13 → 14.5 ("Full
+  Conversion" ink 103 vs 94), the TOOLS label 10 → 13 (48 vs 35) now
+  aligned with the icon boxes (x=50), the section head stays 20 ("Quick
+  Tools" ink 126 ≈ 129 at 20 — the earlier "bigger" read was AA spread),
+  the hero support 22 → 18 (L1 ink 495 = 597×18/22 — the "ascender 17px"
+  reading was AA-inflated), the brand wordmark 44 → 30 (ink 67 vs 101 —
+  it was over-sized) while the leaf mark grows 26 → 44 (ink 40×46 vs
+  23×23 — it was under-sized), and the eyebrow's tracking tightens
+  1.6 → 0.4 px (ink 145 vs 166).
+- **The hero rhythm** (`ui_qt/views/home_view.py`): measured ink
+  positions now land within 2-4 px of the reference at every step —
+  eyebrow 134/132, headline L1 171/171 (exact), L2 221/218, support
+  277/277 (exact), CTA 352-403/352-404 (exact). The support copy's
+  two-line break is pinned with a hard newline (the correction spec's
+  verbatim lines — greedy wrap put "and" on line 1); the column opens
+  33 px below the hero top; the pre-CTA air absorbs the reference's
+  taller pseudo-text pitch; content margins 26/30 → 22/29 (hero cream
+  [310..1484] vs the reference's [308..1487]).
+- **The CTA capsule renders everywhere** (`_HeroCTA.paintEvent`): three
+  independent renderers — this offscreen stack, the V0.6.80 Windows
+  build (the square CTA in the user's `now2.png`), and Qt's button path
+  generally — paint `QPushButton { background; border; border-radius }`
+  as a SQUARE when the rule lives on the QApplication stylesheet
+  (widget-level sheets and QFrame rules round fine on the same stacks).
+  The capsule is now painted directly with QPainter (fill + 1 px
+  self-coloured seam + hover/pressed/disabled states), 253×53 measured
+  vs the reference's 253×53, with the QSS rule reduced to
+  typography/padding/sizeHint.
+- **The retired-column stretch fix** (`_lay_grid_columns`): `takeAt`
+  removes items but never column metadata — a reflow 3 → 2 columns left
+  an empty stretch-1 column eating up to a third of the grid, so the
+  2-column layout rendered two squeezed cards beside a dead column and
+  1-column never filled the viewport. Every column slot up to the
+  largest count ever laid out is now reset explicitly.
+- **The Quick Tools grid matches the reference's bands**: card minimum
+  116 → 122 (rendered 124 ≈ the reference's measured rows
+  [510..634]/[646..770]/[781..912]), the inter-card gap 15 → 13, the
+  heading→grid air 22 → 11, hero→heading 40 → 43; the text block is
+  vertically centered in the card (the old trailing-only stretch pinned
+  it to the top, leaving ~49 px of dead air); card icons 26 → 30 px at
+  stroke 2.05 (the reference's glyphs read heavier); the arrow
+  affordance gains its stem (→, not a bare chevron).
+- **The artwork is full-bleed** (`_flattened_hero_pixmap`): the old
+  `min(max_w, crop.width())` hard-capped the visual at the 504 px native
+  crop — always ~40 px short of the reference's 543 px ink. The budget
+  now governs the size (540 px at the reference viewport) and the
+  right margin drops to 0 so the still-life reaches the hero's edge
+  exactly as the reference paints it ([943..1483] vs [945..1486]).
+- **The sidebar's footer/tagline rhythm**: divider + Settings/About
+  retuned to the reference's ink positions (Settings 652/652 exact);
+  the tagline card's top inset and art strip retuned (text ink
+  822/829, art 890/901); nav rows 37 px with the Home pill 45
+  (reference 232×45), nav glyphs 21 px, icon→label air 22 px (label
+  ink at x=93 as measured).
+- **Evidence set** (repo root): `now3.png` (light, 1536×1024 — 3×3 grid,
+  the exact two-line headline, capsule CTA, no scrollbar),
+  `now3_dark.png` (dark, same geometry), `now3_overlay.png` (50% blend,
+  shell-aligned), `now3_diff.png` (amplified per-region difference).
+  VLM acceptance comparison: all 11 correction-spec criteria
+  MATCH/CLOSE, estimated 98% perceived layout similarity; per-region
+  mean pixel |diff|: top bar 4.0, status 5.1, sidebar 13.4, grid 15.0
+  (text/AA dominated).
+- **Responsive re-verified on TWO font stacks** (Inter + the wide
+  fallback — the Windows-class scenario): identical column counts at
+  every size (1/1/1/1/2/2/2/3 from 760 → 1536), zero horizontal
+  scrollbars, no vertical scrollbar at the reference viewport on either
+  stack, and the hero growing (340 → 371) instead of clipping on the
+  wide stack.
+- **Tests**: `test_m2_dashboard` 34 ✓, `test_m1_theme_tokens` 24 ✓ + 1
+  pre-existing env failure (`test_rgba_helper` — fails identically on
+  the pre-change tree), `test_v0667/v067/v068` 156 ✓, the icon-cache
+  pins updated for the backwards-compatible optional `stroke` parameter
+  (every existing call site unchanged). 15/15 interaction checks: the
+  CTA and the featured card open the SAME `WizardView` with the same
+  controller, the nine keys route through the existing dispatch,
+  view-all/sidebar navigation/pages work, both themes toggle, the
+  frameless window machinery is intact.
+
+
 ## V0.6.81 — the compiled-Windows "not enough space" fix: the measured reflow (columns chosen by the page's REAL minimum on the running font stack, never by dev-tuned thresholds), the screen-aware reference default (fresh installs open at the 1536×1024 composition), the no-clip window floor, the reference's exact two-line headline, and the QSS capsule that actually renders on Windows
 
 The field report behind this release: *"Same thing happened again. not

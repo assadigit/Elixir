@@ -136,7 +136,10 @@ class SidebarBrandCard(QFrame):
         self._pm_key: tuple | None = None
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(0, 20, 0, 0)
+        # V0.6.82 (Round-2 correction): the reference's brand card is ~125 px
+        # ([807..932]) with the tagline text ink at [829..869] and the art
+        # band's ink in the lower [901..932] — top inset 22, strip 64.
+        root.setContentsMargins(0, 22, 0, 0)
         root.setSpacing(0)
 
         # ── leaf glyph + the two-line brand text ──────────────────────
@@ -240,7 +243,8 @@ class SidebarBrandCard(QFrame):
         # Keep the strip compact (V0.6.77: the reference card's art band
         # is ~50 px of the ~126 px card): crop from the TOP (the fade
         # erases the crop line) so the hills' lower band fills the strip.
-        strip_h = min(scaled_h, 72)
+        # V0.6.82: 64 — the card totals ≈125 px with the 22 px top inset.
+        strip_h = min(scaled_h, 64)
         flat = QImage(w, strip_h, QImage.Format.Format_ARGB32_Premultiplied)
         flat.fill(QColor(p.bg_surface))
         painter = QPainter(flat)
@@ -322,12 +326,19 @@ class Sidebar(QFrame):
 
         # ── the brand row (V0.6.77: the reference's leaf + wordmark,
         #    moved out of the top bar into the rail) ──────────────────
+        # V0.6.82 (Round-2 correction, ink-calibrated): the reference's
+        # leaf mark is LARGE (ink 40×46 at x[51..91]) while its wordmark
+        # is SMALLER than V0.6.76 had it (ink 67 px wide vs 101 at 44 px →
+        # brand=30). Margins/spacing place the leaf ink at x≈51 (was ≈42)
+        # with the row's ink starting at y≈52 (was 61).
         brand_row = QWidget()
         bl = QHBoxLayout(brand_row)
-        bl.setContentsMargins(18, 28, 16, 30)
-        bl.setSpacing(10)
+        # V0.6.82: bottom 28 — the Home pill lands at y≈130 (reference
+        # [128..172]) with the shorter 30 px wordmark.
+        bl.setContentsMargins(26, 24, 16, 28)
+        bl.setSpacing(16)
         self._brand_leaf = QLabel()
-        self._brand_leaf.setFixedSize(34, 34)
+        self._brand_leaf.setFixedSize(48, 48)
         bl.addWidget(self._brand_leaf, 0, Qt.AlignmentFlag.AlignVCenter)
         self._brand_word = QLabel("Elixir")
         self._brand_word.setObjectName("BrandWord")
@@ -352,13 +363,15 @@ class Sidebar(QFrame):
                 self._items[key] = item
                 nav.addWidget(item)
         # V0.6.79: the reference's divider + Settings/About sit a fixed
-        # ~46 px below the LAST TOOL (not bottom-pinned) — the tagline
-        # card below owns the bottom anchoring.
-        nav.addSpacing(50)
+        # distance below the LAST TOOL (not bottom-pinned) — the tagline
+        # card below owns the bottom anchoring. V0.6.82 (ink-calibrated):
+        # divider at y≈612 and Settings ink at y≈652 in the reference
+        # (last-tool ink ends 565) — the spacings retune 50/36 → 32/34.
+        nav.addSpacing(32)
         divider = QFrame()
         divider.setObjectName("Divider")
         nav.addWidget(divider)
-        nav.addSpacing(36)
+        nav.addSpacing(34)
         for key, icon_name, label in NAV_FOOTER:
             item = SidebarNavItem(icon_name, label)
             item.clicked.connect(lambda k=key: self.navigate.emit(k))
@@ -408,9 +421,11 @@ class Sidebar(QFrame):
 
     # ── theme ───────────────────────────────────────────────────────────
     def _apply_brand_tints(self) -> None:
-        """The brand row's leaf tint (token-driven)."""
+        """The brand row's leaf tint (token-driven). V0.6.82: the glyph
+        renders at 44 px inside its 48 px box (the reference's leaf ink is
+        40×46 — a large mark against the now-smaller wordmark)."""
         p = theme_manager.palette
-        self._brand_leaf.setPixmap(icon("leaf", p.accent, 26).pixmap(26, 26))
+        self._brand_leaf.setPixmap(icon("leaf", p.accent, 44).pixmap(44, 44))
 
     def refresh_theme(self) -> None:
         """Re-apply theme-dependent styles (theme toggle hook)."""

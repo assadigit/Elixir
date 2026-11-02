@@ -238,16 +238,18 @@ def _svg(name: str, color: str, size: int, stroke: float = 1.85) -> str:
     )
 
 
-def pixmap(name: str, color: str = "#E8EAED", size: int = 20) -> QPixmap:
+def pixmap(name: str, color: str = "#E8EAED", size: int = 20, stroke: float = 1.85) -> QPixmap:
     """Render icon ``name`` to a QPixmap at the given colour and size.
 
     Renders at 2× the target size then scales down smoothly — eliminates
     the pixelation/jaggies that appear when scaling a 24×24 viewBox up to
-    large sizes (64px+).
+    large sizes (64px+). ``stroke`` (viewBox units) lets the dashboard
+    glyphs run slightly heavier (V0.6.82: the approved reference's icons
+    read visibly bolder than 1.85 at the same size).
     """
     scale = 2  # supersample for crisp rendering
     render_size = size * scale
-    svg = _svg(name, color, render_size)
+    svg = _svg(name, color, render_size, stroke)
     pm_hi = QPixmap(render_size, render_size)
     pm_hi.fill(Qt.transparent)
     renderer = QSvgRenderer(QByteArray(svg.encode("utf-8")))
@@ -262,17 +264,17 @@ def pixmap(name: str, color: str = "#E8EAED", size: int = 20) -> QPixmap:
     return pm
 
 
-# V18.20.4.8: O-b6 icon cache — keyed by the (name, colour, size) tuple.
-_ICON_CACHE: dict[tuple[str, str, int], QIcon] = {}
+# V18.20.4.8: O-b6 icon cache — keyed by the (name, colour, size, stroke) tuple.
+_ICON_CACHE: dict[tuple[str, str, int, float], QIcon] = {}
 
 
-def icon(name: str, color: str = "#E8EAED", size: int = 20) -> QIcon:
-    """Render icon ``name`` to a QIcon (cached per name/colour/size)."""
-    key = (name, color, size)
+def icon(name: str, color: str = "#E8EAED", size: int = 20, stroke: float = 1.85) -> QIcon:
+    """Render icon ``name`` to a QIcon (cached per name/colour/size/stroke)."""
+    key = (name, color, size, stroke)
     cached = _ICON_CACHE.get(key)
     if cached is not None:
         return cached
-    built = QIcon(pixmap(name, color, size))
+    built = QIcon(pixmap(name, color, size, stroke))
     _ICON_CACHE[key] = built
     return built
 

@@ -143,8 +143,10 @@ _QUICK_CARDS: list[tuple[str, str, str, str, bool]] = [
 # reference's 3-column band) and as the minimum window's guaranteed floor.
 _GRID_3_MIN_W = 820
 _GRID_2_MIN_W = 520
-_GRID_GAP = 15  # the QGridLayout's inter-column gap — kept in sync with
-# the setSpacing(_GRID_GAP) call in _build_quick_tools
+# V0.6.82 (Round-2 correction): the reference's inter-card gap measured
+# 12-13 px (row bands [510..634]/[646..770]/[781..912]) vs the previous 15 —
+# kept in sync with the setSpacing call in _build_quick_tools.
+_GRID_GAP = 13
 
 
 if TYPE_CHECKING:  # pragma: no cover — typing only
@@ -221,24 +223,60 @@ class _HeroCard(QFrame):
 
 
 class _HeroCTA(QPushButton):
-    """The reference's capsule CTA — the QSS pill (play icon + label via
-    the normal QPushButton affordances) plus the trailing arrow painted
-    inside the pill's right inset (palette-aware, re-rendered on theme
-    refresh)."""
+    """The reference's capsule CTA — a QPainter-drawn pill (V0.6.82) plus
+    the play icon + label via the normal QPushButton affordances and the
+    trailing arrow painted inside the pill's right inset (palette-aware,
+    re-rendered on theme refresh).
+
+    V0.6.82 (Round-2 correction): the capsule is painted DIRECTLY, not by
+    the app-level QSS. Three independent renderers were measured painting
+    ``QPushButton#HeroPrimary { background; border: 1px; border-radius }``
+    as a SQUARE when the rule lives on the QApplication stylesheet — the
+    offscreen/raster stack here (the dev preview that kept disagreeing
+    with the field), and the V0.6.80 Windows build (the square CTA in the
+    user's ``now2.png``). Widget-level stylesheets and QFrame rules round
+    fine on the same stacks, so the engine's button path is the unstable
+    one. Painting the rounded rect here is deterministic on EVERY
+    platform and keeps the QSS rule for typography/padding only.
+    """
 
     def paintEvent(self, event) -> None:  # noqa: N802 (Qt naming)
-        super().paintEvent(event)
-        from PySide6.QtCore import QPointF
+        from PySide6.QtCore import QPointF, QRectF
         from PySide6.QtGui import QColor, QPainter, QPen
 
         p = theme_manager.palette
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        pen = QPen(QColor(p.text_on_accent), 2.2)
+
+        # ── the capsule fill (hover/pressed/disabled track the palette) ──
+        if not self.isEnabled():
+            fill = QColor(p.bg_input)
+        elif self.isDown():
+            fill = QColor(p.accent_pressed)
+        elif self.underMouse():
+            fill = QColor(p.accent_hover)
+        else:
+            fill = QColor(p.accent)
+        radius = self.height() / 2.0
+        rect = QRectF(0.5, 0.5, self.width() - 1.0, self.height() - 1.0)
+        painter.setPen(QPen(fill, 1))  # the 1px self-coloured seam
+        painter.setBrush(fill)
+        painter.drawRoundedRect(rect, radius, radius)
+        painter.end()
+
+        # label + icon over the transparent QSS background
+        super().paintEvent(event)
+
+        # ── the trailing arrow ──────────────────────────────────────────
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        pen = QPen(QColor(p.text_on_accent if self.isEnabled() else p.text_muted), 2.2)
         pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
         painter.setPen(pen)
-        x = self.width() - 24.0
+        # V0.6.82: inset 26 — the reference's arrow sits ~26 px from the
+        # pill's right edge (measured [557..561] inside [335..587]).
+        x = self.width() - 26.0
         y = self.height() / 2.0
         painter.drawLine(QPointF(x - 9, y), QPointF(x, y))
         painter.drawLine(QPointF(x - 5, y - 5), QPointF(x, y))
@@ -283,9 +321,13 @@ class HomeView(QWidget):
         # V0.6.78 (visual-fidelity pass): the reference's content insets —
         # the hero opens flush under the top bar (0 top margin; the bar's
         # bottom edge IS the hero's top edge, exactly as measured), 26 px
-        # left / 30 px right of the content area.
+        # left / 30 px right of the content area. V0.6.82 (Round-2
+        # correction, ink-calibrated): the reference's hero spans
+        # x[308..1487] against a rail edge at 285 and shell edge at 1516 —
+        # margins 22/29 place the hero cream exactly there (was 26/30 →
+        # [314..1483]).
         root = QVBoxLayout(self)
-        root.setContentsMargins(26, 0, 30, 0)
+        root.setContentsMargins(22, 0, 29, 0)
         root.setSpacing(0)
         self._hero_visual_w = 0
 
@@ -298,8 +340,9 @@ class HomeView(QWidget):
 
         # 2 — the Quick Tools section (secondary tools only — the hero is
         # never duplicated as a tile; spec §6 / decision Q7). V0.6.78: the
-        # reference's ~40 px breathing room after the hero.
-        root.addSpacing(40)
+        # reference's ~40 px breathing room after the hero. V0.6.82:
+        # measured 43 px (hero bottom 430 → heading ink 473).
+        root.addSpacing(43)
         root.addLayout(self._build_quick_tools())
 
         root.addStretch()
@@ -328,19 +371,31 @@ class HomeView(QWidget):
         # V0.6.80: the panel-level inset is minimal — the still-life runs
         # nearly the panel's full height (the reference's ink spans
         # ~92% of it); the TEXT column carries its own top inset below.
+        # V0.6.82 (Round-2 correction, ink-calibrated): the reference's
+        # text column starts at hero+27 (heading/CTA ink at x=335 with the
+        # hero cream starting at 308 — was +15 with the old 12 px margin)
+        # and the artwork runs FULL-BLEED to the hero's right edge (the
+        # reference's art reaches x=1486 with the cream ending 1487 —
+        # right margin 10 → 0).
         lay = QHBoxLayout(hero)
-        lay.setContentsMargins(12, 6, 10, 0)
+        lay.setContentsMargins(26, 6, 0, 0)
         lay.setSpacing(18)
 
         text_col = QVBoxLayout()
         text_col.setSpacing(0)
-        text_col.addSpacing(28)
+        # V0.6.82: measured rhythm (ink positions vs the reference:
+        # eyebrow 132/134, heading 171/171, support 277/277, CTA
+        # 352/352) — the column opens 33 px below the hero top and the
+        # pre-CTA air is 36 (the reference's support block is taller:
+        # its pseudo-text runs a ~30 px line pitch vs Inter's 24 at 18 px,
+        # so the gap absorbs the difference).
+        text_col.addSpacing(33)
 
         # The reference hero's eyebrow — small, tracked-out, sage.
         eyebrow = QLabel("WELCOME TO ELIXIR")
         eyebrow.setObjectName("Eyebrow")
         text_col.addWidget(eyebrow)
-        text_col.addSpacing(17)
+        text_col.addSpacing(16)
 
         # V0.6.81: the reference's EXACT two-line break is explicit — a
         # hard newline in the label text. The V0.6.78 wrap-cap approach
@@ -361,15 +416,23 @@ class HomeView(QWidget):
         text_col.addWidget(heading)
         text_col.addSpacing(12)
 
+        # V0.6.82 (Round-2 correction): the reference's EXACT two-line
+        # support break is pinned the same way the headline is — greedy
+        # wrap put "and" on line 1 ("…organized and" / "ready for you to
+        # explore."), the correction spec §Hero pins
+        #   "Books, articles and documents — summarized, organized"
+        #   "and ready for you to explore."
+        # (reference line inks: 495 px and 265 px). The maximumWidth cap
+        # below stays as the narrow-width guard.
         support = QLabel(
-            "Books, articles and documents — summarized, organized and ready for you to explore."
+            "Books, articles and documents — summarized, organized\nand ready for you to explore."
         )
         support.setObjectName("Support")
         self._hero_support = support
         support.setWordWrap(True)
         support.setMaximumWidth(520)
         text_col.addWidget(support)
-        text_col.addSpacing(20)
+        text_col.addSpacing(36)
 
         # ONE clear primary action (spec §6). Decision Q7: the header
         # "✨ Process Wizard" button is gone; the hero owns the entry and
@@ -382,7 +445,7 @@ class HomeView(QWidget):
         self._set_cta_icon()
         self.cta_btn.clicked.connect(self.start_requested.emit)
         text_col.addWidget(self.cta_btn, 0, Qt.AlignmentFlag.AlignLeft)
-        text_col.addSpacing(24)
+        text_col.addSpacing(18)
         text_col.addStretch()
 
         lay.addLayout(text_col, 1)
@@ -441,8 +504,14 @@ class HomeView(QWidget):
         # reference's still-life FILLS its band, so crop to the ink (plus
         # a 6 px cushion) before scaling; otherwise the visible books
         # render ~25% smaller than the reference at the same box.
+        # V0.6.82 (Round-2 correction): the reference's artwork ink spans
+        # 543 px ([945..1486]) — LARGER than the 504 px native crop, so
+        # the old `min(max_w, crop.width())` hard-capped the visual at
+        # native scale and always came up ~40 px short. The budget (and
+        # its 0.55×width cap) now fully governs the size; the ~1.07×
+        # upscale at the reference viewport is invisible at screen DPI.
         crop = self._asset_ink_crop(src)
-        w = min(max_w, crop.width())
+        w = max_w
         h = max(1, round(crop.height() * w / crop.width()))
         flat = QImage(w, h, QImage.Format.Format_ARGB32_Premultiplied)
         flat.fill(QColor(theme_manager.palette.bg_hero))
@@ -528,8 +597,14 @@ class HomeView(QWidget):
         # (~29% of the content width, clamped 230–340) — NOT the card's
         # live height, which the pixmap itself would inflate (a feedback
         # loop: taller card → bigger budget → taller pixmap → …).
+        # V0.6.82 (Round-2 correction): the reference's artwork is
+        # FULL-BLEED — its ink spans [945..1486] of the hero [308..1487]
+        # (543 px wide, ~92% of the panel height). inner_h drops the old
+        # −8 safety bite (target+2) so the visual lands at ~540 px at the
+        # reference viewport instead of 520, reaching the hero's right
+        # edge exactly as the reference paints it.
         target_h = max(230, min(340, round(self.width() * 0.29)))
-        inner_h = target_h - 8
+        inner_h = target_h + 2
         if inner_h < 110:
             inner_h = 222  # pre-first-layout fallback (230 - 8)
         by_h = round(inner_h * 504 / 318)  # the ink-crop's aspect
@@ -568,7 +643,11 @@ class HomeView(QWidget):
         self._view_all_btn.clicked.connect(self.view_all_requested.emit)
         head_row.addWidget(self._view_all_btn, 0, Qt.AlignmentFlag.AlignVCenter)
         section.addLayout(head_row)
-        section.addSpacing(22)
+        # V0.6.82 (Round-2 correction): the reference's heading→grid air —
+        # heading row bottom ≈499, first card top 510 → 11 px (was 22,
+        # which pushed the grid 7-8 px low and pushed the third row's
+        # bottom into the status bar's breathing room).
+        section.addSpacing(11)
 
         self._quick_cards: list[QuickToolCard] = []
         self._quick_grid = QGridLayout()
@@ -646,16 +725,26 @@ class HomeView(QWidget):
             self._quick_grid.takeAt(0)  # items only — the widgets survive
         for i, card in enumerate(self._quick_cards):
             self._quick_grid.addWidget(card, i // cols, i % cols)
-        for c in range(cols):
-            self._quick_grid.setColumnStretch(c, 1)
+        # V0.6.82 (Round-2 correction, the resize-sweep catch): retired
+        # columns keep their stretch factors after a reflow to fewer
+        # columns (takeAt removes items, never column metadata) — an empty
+        # stretch-1 column then eats up to a third of the grid, so the
+        # 2-column layout rendered two squeezed cards beside a dead
+        # column and the 1-column layout never filled the viewport. Every
+        # column slot up to the largest count ever laid out is reset
+        # explicitly; only the ACTIVE columns carry stretch.
+        for c in range(max(cols, getattr(self, "_grid_cols_max", cols))):
+            self._quick_grid.setColumnStretch(c, 1 if c < cols else 0)
+        self._grid_cols_max = max(cols, getattr(self, "_grid_cols_max", cols))
         rows = (len(self._quick_cards) + cols - 1) // cols
         for r in range(self._quick_grid.rowCount()):
             # Retired rows (a reflow from more columns to fewer leaves
             # empty rows behind — QGridLayout cannot delete them) MUST
             # drop their minimums again, or the stale 120 px floors
             # inflate the page's minimum ~240 px past the scroll
-            # viewport (the V0.6.80 scrollbar catch).
-            self._quick_grid.setRowMinimumHeight(r, 120 if r < rows else 0)
+            # viewport (the V0.6.80 scrollbar catch). V0.6.82: the floor
+            # tracks the card's new 122 px minimum (rendered ~124).
+            self._quick_grid.setRowMinimumHeight(r, 124 if r < rows else 0)
             self._quick_grid.setRowStretch(r, 0)
         self.layout().activate()  # synchronous minimum refresh — see above
 

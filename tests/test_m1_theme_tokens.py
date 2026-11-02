@@ -215,19 +215,26 @@ class TestQssTemplatePins:
         assert font["display"] == 22
 
     def test_dashboard_type_scale_added(self):
-        """V0.6.76 (visual-fidelity pass): the dashboard scale is re-pinned
-        to the approved reference's measured glyph sizes — hero 41 px
-        (ascender ~30 px over two ~46 px lines), support 20, section 20,
-        tool 15, tool_desc 12.5, sidebar 13, eyebrow 13, brand 22."""
+        """V0.6.82 (Round-2 correction): the dashboard scale is WIDTH-
+        CALIBRATED to the approved reference — same-string Inter advances
+        vs the reference's ink widths (widths are authoritative; ink
+        heights carry ±2 px of antialias spread): hero 41 (headline L2 ink
+        534 both), support 18 (L1 ink 495 = 597×18/22), section 20 ("Quick
+        Tools" ink 126 vs 129 at 20), tool 17 (ink 119 vs 105 at 15),
+        tool_desc 13, sidebar 14.5 (ink 103 vs 94 at 13), group 13 (TOOLS
+        ink 48 vs 35 at 10), eyebrow 14 (ink 145/150), brand 30 (ink 67 vs
+        101 at 44 — the wordmark was over-sized while the leaf mark was
+        under-sized)."""
         font = _ns_kwargs("FONT")
         assert font["hero"] == 41
         assert font["section"] == 20
-        assert font["tool"] == 15
-        assert font["tool_desc"] == 11.5
-        assert font["sidebar"] == 13
-        assert font["body_lg"] == 22
+        assert font["tool"] == 17
+        assert font["tool_desc"] == 13
+        assert font["sidebar"] == 14.5
+        assert font["group"] == 13
+        assert font["body_lg"] == 18
         assert font["eyebrow"] == 14
-        assert font["brand"] == 44
+        assert font["brand"] == 30
 
     def test_qss_has_dashboard_label_rules_and_hero_cta(self):
         code = _strip_comments(_src(_THEME))
@@ -467,7 +474,11 @@ class TestQtBehaviour:
     def test_rgba_helper(self):
         from ui_qt.theme import LIGHT, rgba
 
-        assert rgba(LIGHT.accent, 0.12) == "rgba(63, 99, 77, 0.12)"
+        # V0.6.82 (Round-2 correction): the M1 spec's #3F634D accent was
+        # superseded by the MEASURED reference CTA fill #313C31 (pinned in
+        # test_light_spec_values); this behavioural pin had been left on the
+        # old value and failed at every run since — including V0.6.81's.
+        assert rgba(LIGHT.accent, 0.12) == "rgba(49, 60, 49, 0.12)"
 
     def test_theme_manager_toggle_round_trip(self, tmp_path, monkeypatch):
         from ui_qt.theme import ThemeManager

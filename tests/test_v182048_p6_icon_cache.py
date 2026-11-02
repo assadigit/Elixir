@@ -76,20 +76,24 @@ class TestOb6IconCachePins:
 
     def test_icon_checks_cache_before_building(self):
         """Pin 2: the hit-lookup precedes the QPixmap-render build path and
-        the public signature is unchanged (name/color/size defaults)."""
+        the public signature is backwards-compatible (name/color/size
+        defaults; V0.6.82 appends the OPTIONAL ``stroke`` — every existing
+        call site is unchanged)."""
         code = _strip_comments(_src())
         tree = ast.parse(code)
         fn = _icon_func(tree)
-        # signature unchanged: (name, color="#E8EAED", size=20) -> QIcon
+        # signature: (name, color="#E8EAED", size=20, stroke=1.85) -> QIcon
         args = fn.args
         assert [a.arg for a in args.posonlyargs + args.args] == [
             "name",
             "color",
             "size",
+            "stroke",
         ]
-        assert len(args.defaults) == 2
+        assert len(args.defaults) == 3
         assert args.defaults[0].value == "#E8EAED"
         assert args.defaults[1].value == 20
+        assert args.defaults[2].value == 1.85
         assert fn.returns.id == "QIcon"
         # cache read: either `key in _ICON_CACHE` or `_ICON_CACHE.get(key)`
         reads = [
@@ -135,9 +139,10 @@ class TestOb6IconCachePins:
             for n in ast.walk(fn)
             if isinstance(n, ast.Assign)
             and isinstance(n.value, ast.Tuple)
-            and [ast.unparse(e) for e in n.value.elts] == ["name", "color", "size"]
+            and [ast.unparse(e) for e in n.value.elts]
+            == ["name", "color", "size", "stroke"]
         ]
-        assert keys, "key = (name, color, size) tuple must be built"
+        assert keys, "key = (name, color, size, stroke) tuple must be built"
         # every return path yields a QIcon (cached or freshly built)
         returns = [n for n in ast.walk(fn) if isinstance(n, ast.Return)]
         assert returns, "icon() must return"

@@ -79,18 +79,28 @@ FONT = _ns(
     h1=18,  # hero / dialog titles
     display=22,  # splash / numbers
     # ── M1 dashboard-facing additions (spec §4 ranges) ──────────────────
-    # V0.6.76 (visual-fidelity pass): retuned to the PIXEL MEASUREMENTS of
-    # the approved reference (1536×1024) — eyebrow cap ~11px, headline
-    # ascender ~30px over two ~46px lines, support ~20px ascender 17px,
-    # section heading cap ~16px, card titles ~15px, nav labels ~13px.
-    eyebrow=14,  # hero eyebrow (tracked uppercase, reference cap ~11px)
-    body_lg=22,  # dashboard body / hero support copy (reference ascender 17px)
-    tool=15,  # quick-tool card titles (reference ~15px semibold)
-    tool_desc=11.5,  # quick-tool card descriptions (reference ~11.5px)
-    sidebar=13,  # sidebar nav labels, medium weight (reference ~13px)
-    section=20,  # dashboard section headings ("Quick Tools", cap ~16px)
+    # V0.6.82 (Round-2 correction): re-measured against the approved
+    # reference with ink-bbox calibration (glyph ink extents of the SAME
+    # strings rendered side by side) — the V0.6.76 estimates read the
+    # AI-generated reference's soft antialiasing as smaller glyphs than it
+    # actually paints. Calibrated ratios vs the V0.6.76 values: card title
+    # ink 119px vs 105 (×1.13), section head 17 vs 15, nav labels 103 vs 94
+    # (×1.10), TOOLS label 48 vs 35 (×1.37); the brand wordmark was
+    # OVER-sized (ink 101px vs the reference's 67 → 44 → 30) while the leaf
+    # mark was under-sized (ink 23 vs 40 → glyph 26 → 44).
+    eyebrow=14,  # hero eyebrow (tracked uppercase; measured ink 11px both)
+    # V0.6.82 width-calibrated: the reference's support line inks are
+    # 495 px (L1) / 265 px (L2); Inter advances 597/335 at 22 px → the
+    # reference's effective size is ≈18 (the V0.6.76 "ascender 17px"
+    # reading was AA-inflated ink height, not glyph size).
+    body_lg=18,  # dashboard body / hero support copy
+    tool=17,  # quick-tool card titles (reference ink 119px vs 105 at 15px)
+    tool_desc=13,  # quick-tool card descriptions (reference ink ×1.13)
+    sidebar=14.5,  # sidebar nav labels (reference ink 103px vs 94 at 13px)
+    group=13,  # the sidebar's TOOLS label (reference ink 48px vs 35 at 10px)
+    section=20,  # "Quick Tools" — reference ink 126px ≈ the 20px render's 129
     hero=41,  # hero heading (reference ascender ~30px, 2×46px lines)
-    brand=44,  # sidebar "Elixir" wordmark (reference ascender ~39px)
+    brand=30,  # sidebar "Elixir" wordmark (reference ink 67px vs 101 at 44px)
 )
 
 # Font weights (Inter ships these; Segoe UI maps 500/600→SemiBold reasonably)
@@ -506,7 +516,9 @@ def _qss(p: Palette) -> str:
     QLabel#Eyebrow {{
         font-size: {FONT.eyebrow}px; font-weight: {WEIGHT.semibold};
         color: {p.sage};
-        letter-spacing: 1.6px;
+        /* V0.6.82: width-calibrated — the reference's eyebrow ink is
+           145 px vs 166 at 1.6 px tracking; ~0.4 px lands it there. */
+        letter-spacing: 0.4px;
     }}
     QLabel#Support {{
         font-size: {FONT.body_lg}px; font-weight: {WEIGHT.regular};
@@ -529,9 +541,12 @@ def _qss(p: Palette) -> str:
         color: {p.text_secondary};
     }}
     QLabel#SidebarGroup {{
-        font-size: {FONT.caption}px; font-weight: {WEIGHT.semibold};
+        font-size: {FONT.group}px; font-weight: {WEIGHT.semibold};
         color: {p.text_secondary};
         letter-spacing: 0.8px;
+        /* V0.6.82: aligns the TOOLS label with the icon boxes' left edge
+           (reference x=50, measured vs the old x=40). */
+        padding-left: 12px;
     }}
     QLabel#BrandWord {{
         font-size: {FONT.brand}px; font-weight: {WEIGHT.semibold};
@@ -606,25 +621,20 @@ def _qss(p: Palette) -> str:
        painted as a plain rectangle on Windows while every bordered
        control rounded correctly. */
     QPushButton#HeroPrimary {{
-        background-color: {p.accent};
+        /* V0.6.82 (Round-2 correction): the FILL is painted directly by
+           _HeroCTA.paintEvent (a capsule on every platform) — this rule
+           keeps the typography/padding/sizeHint and stays transparent so
+           the button engine never paints a square behind the capsule.
+           The hover/pressed/disabled fills live in the painter. */
+        background-color: transparent;
         color: {p.text_on_accent};
-        border: 1px solid {p.accent};
-        border-radius: 29px;
-        padding: 17px 26px;
+        border: none;
+        border-radius: 27px;
+        padding: 15px 48px;
         font-size: 16px; font-weight: {WEIGHT.semibold};
         outline: none;
     }}
-    QPushButton#HeroPrimary:hover {{
-        background-color: {p.accent_hover};
-        border-color: {p.accent_hover};
-    }}
-    QPushButton#HeroPrimary:pressed {{
-        background-color: {p.accent_pressed};
-        border-color: {p.accent_pressed};
-    }}
     QPushButton#HeroPrimary:disabled {{
-        background-color: {p.bg_input};
-        border-color: {p.bg_input};
         color: {p.text_muted};
     }}
 
@@ -703,7 +713,10 @@ def _qss(p: Palette) -> str:
         background-color: transparent;
         color: {p.text_secondary};
         border: none;
-        padding: 4px 6px;
+        /* V0.6.82: 2 px vertical padding — the reference's link box is
+           ~22 px tall (ink 13), keeping the heading row compact so the
+           card grid starts at y≈510 as measured. */
+        padding: 2px 6px;
         font-size: {FONT.sidebar}px; font-weight: {WEIGHT.medium};
         outline: none;
     }}
