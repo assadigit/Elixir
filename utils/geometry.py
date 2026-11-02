@@ -68,6 +68,33 @@ def restored_geometry_is_visible(
 DEFAULT_W, DEFAULT_H = 760, 540  # V0.6.68 — the ORIGINAL pre-V13.31.0 default, restored
 MAX_W, MAX_H = 1600, 1000  # V0.6.68 — was 900x620 (the compact-era ceiling)
 
+# V0.6.81: the first-run default is no longer the fixed 760x540. The approved
+# reference dashboard (hero + the full 3x3 Quick Tools grid, no scrollbar) is
+# composed for a ~1536x1024 window; a fresh install that opens at 760x540 can
+# never show it (the 2026-11-02 field report: "not enough space in the
+# compiled app in windows"). The first-run size is now the reference
+# composition scaled to ~92% of the primary screen's work area (see
+# ``reference_default_size``); 760x540 stays the floor for tiny screens and
+# the no-screen fallback, and every constant the pinned tests rely on is
+# untouched.
+REFERENCE_W, REFERENCE_H = 1536, 1024  # the approved reference window geometry
+
+
+def reference_default_size(avail_w: int, avail_h: int) -> tuple[int, int]:
+    """The V0.6.81 first-run window size: the approved reference composition
+    (1536x1024 — the window the dashboard was measured against) scaled to
+    ~92% of the primary screen's available work area when the screen is
+    smaller, never below the 760x540 floor. Pure (Qt-free) so the decision
+    stays unit-testable; the caller passes the primary screen's
+    ``availableGeometry()`` size."""
+    try:
+        w = max(DEFAULT_W, min(REFERENCE_W, round(int(avail_w) * 0.92)))
+        h = max(DEFAULT_H, min(REFERENCE_H, round(int(avail_h) * 0.92)))
+    except (TypeError, ValueError):
+        w, h = DEFAULT_W, DEFAULT_H
+    return w, h
+
+
 # V0.6.68 migration: a saved geometry of EXACTLY the compact-era default is
 # the fingerprint of "opened, never resized" — every V0.6.63–67 install
 # saved it on close, so without a migration those machines would keep
@@ -79,10 +106,22 @@ MAX_W, MAX_H = 1600, 1000  # V0.6.68 — was 900x620 (the compact-era ceiling)
 LEGACY_COMPACT_W, LEGACY_COMPACT_H = 608, 432
 GEOMETRY_SCHEMA_VERSION = 2
 
+# V0.6.81: the V0.6.68–80 era shipped 760x540 as the default, so an entire
+# generation of "opened, never resized" installs saved EXACTLY that size —
+# with the v2 stamp, which the 608x432 migration deliberately treats as a
+# real choice. Those machines re-open at 760x540 forever and can never see
+# the reference dashboard (the field report behind V0.6.81). A save at
+# exactly this fingerprint — stamped or not — migrates to the screen-aware
+# reference default; any other size (a real hand-resize) is honored as
+# before. A user who genuinely wants 760x540 back can resize once — any
+# size OTHER than the exact fingerprint persists.
+LEGACY_V068_DEFAULT_W, LEGACY_V068_DEFAULT_H = DEFAULT_W, DEFAULT_H
+
 
 def sanitize_restore_plan(
     data: dict,
     screens: list[tuple[int, int, int, int]],
+    default_wh: tuple[int, int] | None = None,
 ) -> dict:
     """Decide how to apply a saved window-geometry dict to the CURRENT screens.
 
@@ -113,19 +152,29 @@ def sanitize_restore_plan(
 
     Fail-safe: unreadable/absent values degrade to the centered default,
     never to a blind restore.
+
+    V0.6.81: ``default_wh`` (optional) overrides the module default as the
+    no-preference size — the caller passes the screen-aware reference size
+    (``reference_default_size``) so first runs and migrated fingerprints
+    open at the reference composition on THIS machine's screen.
     """
+    default_w, default_h = default_wh if default_wh else (DEFAULT_W, DEFAULT_H)
     try:
-        w = min(int(data.get("w", DEFAULT_W) or DEFAULT_W), MAX_W)
-        h = min(int(data.get("h", DEFAULT_H) or DEFAULT_H), MAX_H)
+        w = min(int(data.get("w", default_w) or default_w), MAX_W)
+        h = min(int(data.get("h", default_h) or default_h), MAX_H)
     except (TypeError, ValueError):
-        w, h = DEFAULT_W, DEFAULT_H
-    if data.get("v") != GEOMETRY_SCHEMA_VERSION and (w, h) == (
-        LEGACY_COMPACT_W,
-        LEGACY_COMPACT_H,
-    ):
+        w, h = default_w, default_h
+    unstamped = data.get("v") != GEOMETRY_SCHEMA_VERSION
+    if unstamped and (w, h) == (LEGACY_COMPACT_W, LEGACY_COMPACT_H):
         # V0.6.68: the never-resized fingerprint (see the module note) —
         # deliver the restored original default to compact-era installs.
-        w, h = DEFAULT_W, DEFAULT_H
+        w, h = default_w, default_h
+    if (w, h) == (LEGACY_V068_DEFAULT_W, LEGACY_V068_DEFAULT_H):
+        # V0.6.81: the V0.6.68–80 never-resized fingerprint (stamped or
+        # not — see LEGACY_V068_DEFAULT_W) — upgrade to the screen-aware
+        # reference default so those installs finally meet the dashboard
+        # the reference composes.
+        w, h = default_w, default_h
     maximized = bool(data.get("maximized"))
     move_to: tuple[int, int] | None = None
     center_default = True

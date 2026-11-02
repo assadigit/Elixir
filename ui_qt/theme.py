@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from pathlib import Path
 from types import SimpleNamespace
 
 from PySide6.QtGui import QColor, QFontDatabase, QPalette
@@ -266,8 +265,20 @@ def load_inter(app: QApplication) -> list[str]:
     Returns the list of family names that were successfully added (may be
     empty if the font files aren't installed yet — the stylesheet then
     transparently falls back to Segoe UI Variable / Segoe UI).
+
+    V0.6.81: the fonts directory is resolved through ``app_paths.bundle_dir()``
+    — the house pattern for every bundled resource (icons.py, the hero
+    asset, the prompts) — instead of ``Path(__file__).parent.parent``. From
+    source both resolve to the repository root, but in a frozen
+    PyInstaller build the module path is synthesized and the bundle root
+    is the ONLY reliable anchor: if Inter silently fails to register, the
+    QSS stack falls back to Segoe UI, whose wider metrics overflow the
+    dashboard's fixed reflow thresholds (the compiled-Windows "not enough
+    space" reports).
     """
-    fonts_dir = Path(__file__).resolve().parent.parent / "assets" / "fonts"
+    from app_paths import bundle_dir
+
+    fonts_dir = bundle_dir() / "assets" / "fonts"
     families: list[str] = []
     if not fonts_dir.is_dir():
         return families
@@ -552,11 +563,17 @@ def _qss(p: Palette) -> str:
         border-color: {p.border};
     }}
 
-    /* Primary CTA — muted forest green (light) / sage (dark) */
+    /* Primary CTA — muted forest green (light) / sage (dark)
+       V0.6.81: `border: 1px solid` (the fill's own colour — an invisible
+       seam) replaces `border: none`: Qt's QSS engine only clips a
+       QPushButton's background to `border-radius` when a border exists.
+       With `border: none` the button painted as a SQUARE on Windows (the
+       2026-11 field screenshots — cards and pills that carry a border
+       rounded correctly, every borderless button squared). */
     QPushButton#Primary {{
         background-color: {p.accent};
         color: {p.text_on_accent};
-        border: none;
+        border: 1px solid {p.accent};
         border-radius: {RADIUS.md}px;
         padding: 7px 18px;
         font-size: {FONT.body}px; font-weight: {WEIGHT.semibold};
@@ -567,12 +584,15 @@ def _qss(p: Palette) -> str:
     }}
     QPushButton#Primary:hover {{
         background-color: {p.accent_hover};
+        border-color: {p.accent_hover};
     }}
     QPushButton#Primary:pressed {{
         background-color: {p.accent_pressed};
+        border-color: {p.accent_pressed};
     }}
     QPushButton#Primary:disabled {{
         background-color: {p.bg_input};
+        border-color: {p.bg_input};
         color: {p.text_muted};
     }}
 
@@ -580,11 +600,15 @@ def _qss(p: Palette) -> str:
        (dashboard-facing type scale; larger than the dialog Primary).
        V0.6.76 (visual-fidelity pass): the reference's measured capsule —
        ~258×57 px with a ~28 px radius (a true pill at this height),
-       16 px label, generous horizontal padding. */
+       16 px label, generous horizontal padding.
+       V0.6.81: the 1 px self-coloured border (see QPushButton#Primary)
+       makes the capsule actually RENDER — with `border: none` the pill
+       painted as a plain rectangle on Windows while every bordered
+       control rounded correctly. */
     QPushButton#HeroPrimary {{
         background-color: {p.accent};
         color: {p.text_on_accent};
-        border: none;
+        border: 1px solid {p.accent};
         border-radius: 29px;
         padding: 17px 26px;
         font-size: 16px; font-weight: {WEIGHT.semibold};
@@ -592,12 +616,15 @@ def _qss(p: Palette) -> str:
     }}
     QPushButton#HeroPrimary:hover {{
         background-color: {p.accent_hover};
+        border-color: {p.accent_hover};
     }}
     QPushButton#HeroPrimary:pressed {{
         background-color: {p.accent_pressed};
+        border-color: {p.accent_pressed};
     }}
     QPushButton#HeroPrimary:disabled {{
         background-color: {p.bg_input};
+        border-color: {p.bg_input};
         color: {p.text_muted};
     }}
 

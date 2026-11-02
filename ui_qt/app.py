@@ -69,6 +69,7 @@ from utils.geometry import (
     DEFAULT_H,
     DEFAULT_W,
     GEOMETRY_SCHEMA_VERSION,
+    reference_default_size,
     restored_geometry_is_visible,
     sanitize_restore_plan,
 )
@@ -98,8 +99,21 @@ class ElixirWindow(QMainWindow):
         # default — "not in the original container size … very compact and
         # small … it has scroll". The 760x540 default (and the 1600x1000
         # restore ceiling) live in utils.geometry — the single source of
-        # truth; this 560x400 minimum only keeps small screens usable.
-        self.setMinimumSize(560, 400)
+        # truth.
+        #
+        # V0.6.81: the minimum rises 560x400 → 760x440. The 560 floor predates
+        # the M2 dashboard: at 560 logical px the sidebar rail (265) + the
+        # backdrop margins (42) + the home view's own insets leave a ~200 px
+        # content run — NARROWER than one Quick Tool card's title-driven
+        # minimum (~300 px on Inter, ~340 on Segoe UI), so the home page
+        # could only ever render clipped (horizontal scrolling is disabled
+        # by design, per the correction spec §Quick Tools: "Never clip cards
+        # or create horizontal scrolling"). 760 is the narrowest window at
+        # which ONE column always fits with the rail on BOTH font stacks
+        # (a 397 px content run vs the ~360/366 px one-column page minimum)
+        # — the grid reflows to 1 column below that and never overflows.
+        # The default OPENING size is now screen-aware (see _restore_geometry).
+        self.setMinimumSize(760, 440)
         self._restore_geometry()
 
         # V0.6.77 (visual-fidelity pass): the reference presents ELIXIR as
@@ -1215,7 +1229,24 @@ class ElixirWindow(QMainWindow):
             if _GEOMETRY_FILE.exists():
                 with open(_GEOMETRY_FILE) as f:
                     data = json.load(f)
-            plan = sanitize_restore_plan(data, _screens_rects(QApplication.instance()))
+            # V0.6.81: the no-preference size is the approved reference
+            # composition (1536x1024) scaled to ~92% of the primary
+            # screen's work area — a fresh install finally OPENS at a size
+            # that shows the hero + the full 3x3 grid (the 2026-11-02
+            # field report: fresh Windows installs met a 760x540 window
+            # that could never compose the dashboard — "not enough space").
+            # Pure decision logic stays in utils.geometry (testable).
+            default_wh = None
+            try:
+                _app = QApplication.instance()
+                if _app is not None and _app.primaryScreen() is not None:
+                    _avail = _app.primaryScreen().availableGeometry()
+                    default_wh = reference_default_size(_avail.width(), _avail.height())
+            except Exception:
+                logger.debug("screen-aware default geometry unavailable", exc_info=True)
+            plan = sanitize_restore_plan(
+                data, _screens_rects(QApplication.instance()), default_wh=default_wh
+            )
             if plan["rejected"] and "x" in data:  # T-b5's warning, kept alive
                 logger.warning(
                     "restored window geometry (%s,%s %sx%s) is not "

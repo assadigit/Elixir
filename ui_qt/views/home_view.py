@@ -9,13 +9,18 @@ Spec §6 dashboard composition:
 
 The Quick Tools grid is fed from the EXISTING ``TOOL_CARDS`` data (the
 single source of truth for keys / exact user-facing titles / one-line
-descriptions), dropping the ``full_conversion`` entry — no duplicate
-hero tile (spec §6) — and mapping the legacy PROCESS/TRANSFORM/EXTRACT
-categories onto the M2 IA groups. The emoji card icons are swapped for
-the M1 Lucide glyph names (spec §7: one outline family, no emoji). The
-column count reflows with the available width (spec §6 "grid reflows
-with available width"): 4 columns wide, 3 at mid widths, 2 on narrow
-windows — the thresholds are re-checked on every resize.
+descriptions; V0.6.78 additionally carries the reference's featured
+"Full Conversion Wizard" ninth card — a second entry point to the same
+wizard, never a duplicate of the hero's action). The emoji card icons
+are swapped for the M1 Lucide glyph names (spec §7: one outline family,
+no emoji). The column count reflows with the available width (spec §6
+"grid reflows with available width"): V0.6.81 derives the count from the
+cards' MEASURED minimum widths (the running platform's real font
+metrics) — 3 columns while they fit, 2 when 3 cannot, 1 when 2 cannot —
+so the grid never overflows the viewport on ANY font stack (the fixed
+820/520 px thresholds were tuned on the dev font and under-estimated
+what Segoe UI needs, clipping the right column in the compiled Windows
+app).
 
 The hero is an editorial split (spec §6): an eyebrow, heading + supporting
 copy + ONE ``QPushButton#HeroPrimary`` "Start Conversion" on the left,
@@ -77,6 +82,16 @@ from ui_qt.views.tool_dashboard import TOOL_CARDS
 # in 20 px steps so a resize drag recomposites on step crossings only.
 _HERO_IMAGE_STEP = 20
 
+# V0.6.81: the headline's measured display size. The reference's second
+# line ("clear, structured knowledge.") spans ≈540 px in the reference
+# image; at Inter SemiBold that width corresponds to 39 px (41 px — the
+# V0.6.78 FONT.hero measurement from the ascender — runs the line 567 px
+# wide, past the 545 px text column, re-wrapping the hard two-line break
+# into three lines). The scale sweep in _scale_hero_typography anchors to
+# THIS number; the QSS QLabel#Hero base stays on FONT.hero (harmless —
+# the per-widget override always wins once the view is built).
+_HERO_HEADLINE_PX = 39
+
 # Below this CONTENT width the illustration hides (spec §7 narrow-width
 # rule). V0.6.75: ONLY the 560 px minimum window's ≈330 px content band
 # lands here — the old 760 px cutoff hid the visual across the user's
@@ -110,13 +125,26 @@ _QUICK_CARDS: list[tuple[str, str, str, str, bool]] = [
     # The reference's ninth card is labelled "Full Conversion Wizard" (the
     # sidebar entry keeps the shorter "Full Conversion") — the same wizard,
     # explicitly named as one on the card.
-    ("full_conversion", "Full Conversion Wizard", "Transform books, documents and content into clear knowledge.", "wand", True),
+    (
+        "full_conversion",
+        "Full Conversion Wizard",
+        "Transform books, documents and content into clear knowledge.",
+        "wand",
+        True,
+    ),
 ]
 
-# Reflow thresholds (spec §6/P2): the reference's three columns at wide
-# content runs, two at medium, one on narrow windows.
+# Reflow (spec §6/P2): the reference's three equal columns at wide content
+# runs, two at medium, one on narrow windows. V0.6.81: the DECISION is no
+# longer made against these fixed thresholds — the column count is derived
+# from the cards' measured minimum widths (see _relayout_quick_grid), so a
+# column count is only chosen when the real, current font metrics say the
+# columns FIT. The constants remain as the documented design intent (the
+# reference's 3-column band) and as the minimum window's guaranteed floor.
 _GRID_3_MIN_W = 820
 _GRID_2_MIN_W = 520
+_GRID_GAP = 15  # the QGridLayout's inter-column gap — kept in sync with
+# the setSpacing(_GRID_GAP) call in _build_quick_tools
 
 
 if TYPE_CHECKING:  # pragma: no cover — typing only
@@ -233,6 +261,22 @@ class HomeView(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
+        # V0.6.81: an EXPLICIT 1x1 minimum. QWidget's implied minimum is its
+        # layout's minimumSizeHint — so while the Quick Tools grid was laid
+        # out at 3 columns (a ~980 px page minimum) the enclosing
+        # QScrollArea could not resize this view below ~980 px: the resize
+        # events kept reporting the CLAMPED width, the reflow logic never
+        # saw the narrow viewport, and the column count deadlocked at a
+        # size that clipped the right column (the compiled-Windows "not
+        # enough space" reports). An explicit minimum overrides the hint,
+        # the scroll area always pushes the TRUE viewport width through,
+        # and _relayout_quick_grid (called from resizeEvent) drops column
+        # counts until the page's real minimum fits — the transient
+        # sub-minimum state is corrected before the first paint. The
+        # window's own usable floor is enforced at the ElixirWindow level
+        # (760x440), not here.
+        self.setMinimumSize(1, 1)
+
         # Pixmap cache key (bucket, surface) — see _apply_hero_pixmap.
         self._hero_pm_key: tuple | None = None
 
@@ -298,16 +342,21 @@ class HomeView(QWidget):
         text_col.addWidget(eyebrow)
         text_col.addSpacing(17)
 
-        heading = QLabel("Turn documents into clear, structured knowledge.")
+        # V0.6.81: the reference's EXACT two-line break is explicit — a
+        # hard newline in the label text. The V0.6.78 wrap-cap approach
+        # could never guarantee it: at 41 px Inter SemiBold the second
+        # reference line ("clear, structured knowledge." ≈ 567 px) is
+        # WIDER than the first line plus the next word ("Turn documents
+        # into clear," ≈ 529 px), so any greedy wrap that fits line 2
+        # inside a ~545 px column necessarily drags "clear," onto line 1
+        # — the captured V0.6.80 render wrapped exactly that way. The
+        # correction spec §Hero pins these two lines verbatim; the cap on
+        # maximumWidth stays as the narrow-width guard (below ~55% scale
+        # the label still wraps within its column, never clips).
+        heading = QLabel("Turn documents into\nclear, structured knowledge.")
         heading.setObjectName("Hero")
         self._hero_heading = heading
         heading.setWordWrap(True)
-        # V0.6.78: the reference's text block is ~540 px wide at the
-        # 1536×1024 viewport — capping the wrap width guarantees the
-        # measured two-line break ("Turn documents into" / "clear,
-        # structured knowledge.") even when the surrounding layout has
-        # spare room (a wordWrap label's minimum is only its longest
-        # word, so without the cap a wide column renders ONE long line).
         heading.setMaximumWidth(545)
         text_col.addWidget(heading)
         text_col.addSpacing(12)
@@ -349,9 +398,7 @@ class HomeView(QWidget):
         # the room exists). Without it the 560 px minimum window is
         # unreachable and even the 760×540 default geometry self-expands.
         self._hero_visual.setMinimumSize(1, 1)
-        self._hero_visual.setAlignment(
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-        )
+        self._hero_visual.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         lay.addWidget(self._hero_visual, 0, Qt.AlignmentFlag.AlignVCenter)
         self._apply_hero_pixmap()
 
@@ -525,7 +572,7 @@ class HomeView(QWidget):
 
         self._quick_cards: list[QuickToolCard] = []
         self._quick_grid = QGridLayout()
-        self._quick_grid.setSpacing(15)
+        self._quick_grid.setSpacing(_GRID_GAP)
         self._grid_cols = 0  # forces the first _relayout to lay everything out
         meta = _tool_meta()
         for key, title, desc, glyph, featured in _QUICK_CARDS:
@@ -540,15 +587,60 @@ class HomeView(QWidget):
         return section
 
     def _relayout_quick_grid(self) -> None:
-        """(Re)place the cards into the grid at the column count the
-        current width supports — the reference's three equal columns,
-        two at medium widths, one on narrow windows. Cards are persistent
+        """(Re)place the cards into the grid at the column count the current
+        width ACTUALLY supports — the reference's three equal columns, two
+        at medium widths, one on narrow windows. Cards are persistent
         widgets — they are re-added, never rebuilt (click routing + focus
-        live on the card, so a reflow loses nothing)."""
+        live on the card, so a reflow loses nothing).
+
+        V0.6.81 (the Windows "not enough space" fix): the count is decided
+        by MEASUREMENT, not by fixed pixel thresholds. Candidates are tried
+        from the reference's 3 down to 1, and a count is only kept when the
+        page's own measured minimum — every card title, the heading row and
+        the hero at the REAL metrics of the running font stack — fits the
+        width the scroll viewport is actually offering. The old fixed
+        thresholds (820/520) were tuned on the dev box's Inter and
+        UNDER-estimated what other stacks need: on a Windows machine
+        (Segoe UI ~10% wider when the bundled Inter fails to register) a
+        ~530 px content run picked 2 columns needing ~620 px, the home
+        view's minimum width exceeded the scroll viewport, and the right
+        column + the "View all tools" action clipped out of sight — while
+        the dev-side preview, rendering the same geometry with narrower
+        glyphs, looked fine. Measurement cannot drift from any font stack:
+        whatever the metrics, the count only drops when the REAL minimum
+        says the columns cannot fit.
+
+        The width the decision is made against is ``self.width()`` — the
+        TRUE space on offer, guaranteed by the explicit 1x1 minimum set in
+        ``__init__`` (see the note there: without it the scroll area clamps
+        this view at its own layout minimum and the reflow never sees a
+        narrower viewport).
+
+        Qt quirk this lives with: re-parenting layout items does not, by
+        itself, refresh the PAGE-level ``layout().minimumSize()`` — its
+        cache still describes the previous column count until a LayoutRequest
+        is processed. ``_lay_grid_columns`` therefore calls
+        ``self.layout().activate()`` after re-adding the cards, which
+        recomputes the page minimum SYNCHRONOUSLY — the check below always
+        runs against live numbers, in the same event, with no deferred
+        settling."""
         width = max(self.width(), 1)
-        cols = 3 if width >= _GRID_3_MIN_W else (2 if width >= _GRID_2_MIN_W else 1)
-        if cols == self._grid_cols:
-            return
+        for cols in (3, 2, 1):
+            if cols != self._grid_cols:
+                self._lay_grid_columns(cols)
+            if self.layout().minimumSize().width() <= width:
+                return
+        # Even one column overflows (a font stack wider than any the
+        # window minimum was sized for) — the 1-column layout laid out
+        # above is the least-bad result, exactly as before.
+
+    def _lay_grid_columns(self, cols: int) -> None:
+        """Move the persistent cards into a fresh ``cols``-column grid
+        (the widget children survive a reflow — only the layout items are
+        re-parented). Finishes with ``layout().activate()`` so the page
+        minimum the caller checks reflects THIS column count immediately
+        (Qt's page-level minimum cache otherwise still describes the
+        previous count until a posted LayoutRequest runs)."""
         self._grid_cols = cols
         while self._quick_grid.count():
             self._quick_grid.takeAt(0)  # items only — the widgets survive
@@ -565,6 +657,7 @@ class HomeView(QWidget):
             # viewport (the V0.6.80 scrollbar catch).
             self._quick_grid.setRowMinimumHeight(r, 120 if r < rows else 0)
             self._quick_grid.setRowStretch(r, 0)
+        self.layout().activate()  # synchronous minimum refresh — see above
 
     def resizeEvent(self, event) -> None:  # type: ignore[override]  # noqa: N802 (Qt naming)
         super().resizeEvent(event)
@@ -574,11 +667,18 @@ class HomeView(QWidget):
         hero_h = max(240, min(340, round(self.width() * 0.29)))
         if getattr(self, "_hero", None) is not None and getattr(self, "_hero_h", None) != hero_h:
             self._hero_h = hero_h
-            # FIXED, not just minimum: the hero's layout sizeHint (the
-            # wordWrap labels' preferred heights) otherwise inflates the
-            # whole page past the scroll viewport — the reference viewport
-            # shows the full dashboard with NO scrollbar.
-            self._hero.setFixedHeight(hero_h)
+            # V0.6.81: MINIMUM, not FIXED. The fixed height clipped the
+            # hero's text column on wider/taller font stacks (Windows Segoe
+            # UI needs ~15% more vertical room than the dev font at the
+            # same px size — the CTA / the heading's last line were cut at
+            # the 240 px floor). A wordWrap label's height-for-width
+            # minimum now grows the hero exactly as much as the real text
+            # needs and NO more: at the reference viewport (Inter) the
+            # layout minimum stays ≈320 px < 340, so the V0.6.80 guarantee
+            # (the full dashboard fits with NO scrollbar) is preserved,
+            # while a taller font stack stretches the hero instead of
+            # clipping it.
+            self._hero.setMinimumHeight(hero_h)
         # V0.6.79 (spec P2): at narrow content runs the hero's typography
         # scales DOWN with the width (never below 55% — the hierarchy is
         # preserved; a 41 px headline cannot fit a 217 px column, which
@@ -593,15 +693,26 @@ class HomeView(QWidget):
     def _scale_hero_typography(self) -> None:
         """Scale the hero's display type with the available width (the
         reference's 41/22 px at the 1180 px content run, down to 55% at
-        the 560 px minimum window) — and re-cap the wrap widths so the
+        the narrow minimum window) — and re-cap the wrap widths so the
         words always fit their column."""
         from ui_qt.theme import FONT
 
-        scale = max(0.55, min(1.0, self.width() / 1180))
-        hero_px = max(22, round(FONT.hero * scale))
-        support_px = max(13, round(FONT.body_lg * scale))
         if getattr(self, "_hero_heading", None) is None:
             return
+        scale = max(0.55, min(1.0, self.width() / 1180))
+        # _HERO_HEADLINE_PX (V0.6.81): the measured fit for the reference's
+        # exact two-line break — see the constant's note.
+        hero_px = max(22, round(_HERO_HEADLINE_PX * scale))
+        support_px = max(13, round(FONT.body_lg * scale))
+        # V0.6.81: the wrap caps are re-applied on EVERY call — they used
+        # to sit below the font-size early-return, so while the scale was
+        # pegged at the 0.55 floor (every width < ~650 px) a column that
+        # had narrowed kept its stale, too-wide cap from the last resize
+        # above the floor. The cap is a maximum, so the stale value never
+        # clipped text, but it defeated the intended 2-line wrap tuning.
+        col = max(160, self.width() - 90)
+        self._hero_heading.setMaximumWidth(max(200, min(round(545 * scale), col)))
+        self._hero_support.setMaximumWidth(max(190, min(round(520 * scale), col)))
         if getattr(self, "_hero_scale", None) == (hero_px, support_px):
             return
         self._hero_scale = (hero_px, support_px)
@@ -613,10 +724,6 @@ class HomeView(QWidget):
             f"font-size: {support_px}px; color: {theme_manager.palette.text_secondary};"
             f" background: transparent;"
         )
-        # never wider than the column the layout can actually offer
-        col = max(160, self.width() - 90)
-        self._hero_heading.setMaximumWidth(max(200, min(round(545 * scale), col)))
-        self._hero_support.setMaximumWidth(max(190, min(round(520 * scale), col)))
 
     # ══════════════════════════════════════════════════════════════════════
     # Theme refresh (the M0 §6 gap list — the M2 surfaces join the

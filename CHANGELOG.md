@@ -31,6 +31,80 @@
 >    information invented; the commits remain the authoritative record.
 
 
+## V0.6.81 — the compiled-Windows "not enough space" fix: the measured reflow (columns chosen by the page's REAL minimum on the running font stack, never by dev-tuned thresholds), the screen-aware reference default (fresh installs open at the 1536×1024 composition), the no-clip window floor, the reference's exact two-line headline, and the QSS capsule that actually renders on Windows
+
+The field report behind this release: *"Same thing happened again. not
+enough space in the compiled app in windows. but your preview shows
+correctly."* — the second recurrence of the same symptom. The root cause
+was never the Windows build: it was a **reflow decision made against
+numbers that were only true on the dev box**.
+
+- **The measured reflow** (`ui_qt/views/home_view.py`): the Quick Tools
+  column count is no longer chosen by fixed pixel thresholds (820/520 —
+  tuned on Inter, under-estimating Segoe UI by ~10%). Candidates are
+  tried 3 → 2 → 1 and a count is only kept when the page's own
+  `layout().minimumSize()` — every card title, the heading row and the
+  hero at the REAL metrics of the running font stack — fits the width
+  the scroll viewport is actually offering. Two Qt traps made this
+  necessary: (1) the HomeView's implied minimum is its layout's
+  minimumSizeHint, so while the grid was 3-wide (a ~980 px page
+  minimum) the QScrollArea could never resize the view below ~980 px —
+  the resize events reported the CLAMPED width and the reflow
+  deadlocked at a size that clipped the right column (an explicit 1×1
+  minimum breaks the clamp); (2) re-parenting layout items does not
+  refresh the page-level minimum until a posted LayoutRequest runs —
+  `_lay_grid_columns` now finishes with `layout().activate()` so the
+  check runs against live numbers in the same event. Verified by sweep
+  on two font stacks (Inter and a wider-than-Segoe substitute): zero
+  overflow from the 760 px minimum window to 1600 px; the user's
+  ~900 px window now degrades cleanly 3 → 2 → 1 columns instead of
+  clipping. On the reference 1536×1024 window both stacks show the full
+  3×3 grid.
+- **The screen-aware reference default** (`utils/geometry.py` +
+  `ui_qt/app.py`): fresh installs (and the V0.6.68–80
+  "never-resized" 760×540 fingerprint saves, stamped or not) now open
+  at the approved reference composition — 1536×1024 scaled to ~92% of
+  the primary screen's work area (never below 760×540; the pinned
+  constants and the deliberate-choice semantics are untouched). The
+  window minimum rises 560×400 → 760×440: the 560 floor predates the
+  dashboard and was permanently below one card column's minimum.
+- **The reference's exact headline break**: the correction spec pins
+  the two hero lines verbatim; greedy wrapping could never produce them
+  (at 41 px Inter SemiBold the second line is WIDER than the first
+  line plus the next word, so any wrap that fits line 2 drags "clear,"
+  onto line 1). The break is now a hard newline at the measured 39 px
+  display size — verified rendering exactly
+  `Turn documents into` / `clear, structured knowledge.` at the
+  reference viewport.
+- **The hero panel grows instead of clipping**: the hero's height was
+  FIXED (V0.6.80, to stop the sizeHint leak); on a taller font stack
+  that fixed height cut the CTA/last line. It is now a MINIMUM at the
+  reference proportion — the height-for-width floor grows the hero
+  exactly as much as the real text needs and no more (at the reference
+  viewport the layout minimum stays under 340 px, so the no-scrollbar
+  guarantee holds).
+- **The capsule that renders on Windows** (`ui_qt/theme.py`): the
+  field screenshots show every `border: none` + `border-radius`
+  QPushButton painting as a SQUARE on Windows (the hero CTA, the
+  dialog Primary) while every bordered control rounded correctly —
+  Qt's QSS engine only clips a button's background to the radius when
+  a border exists. Both rules now carry a 1 px self-coloured border
+  (an invisible seam); hover/pressed/disabled border-colors follow
+  their fills.
+- **Bundle-robust Inter registration** (`ui_qt/theme.py`):
+  `load_inter` resolves `assets/fonts` through `app_paths.bundle_dir()`
+  (the house pattern) instead of `Path(__file__).parent.parent` — if
+  the registration silently fails in a frozen layout, the QSS stack
+  falls back to the wider Segoe UI and every fixed threshold in the
+  app under-measures (the exact failure mode this release removes the
+  last dependency on).
+- **Evidence set**: `now3.png` / `now3_dark.png` (light + dark at the
+  reference geometry, 3 columns, the exact headline break, no
+  scrollbar), `now3_overlay.png` (50% blend against the reference),
+  `now3_diff.png`. Headline-wrap and column-count verified by VLM
+  inspection of the captures; reflow verified by the two-stack sweep
+  (zero overflow failures).
+
 ## V0.6.80 — visual-fidelity pass 5/5 (close): the full-page fit + the card-detail sweep (no scrollbar at the reference viewport, the reference's card insets + one-line descriptions + "Full Conversion Wizard" ninth-card label, the softer featured arrow)
 
 The closing commit of the visual-fidelity correction pass.
