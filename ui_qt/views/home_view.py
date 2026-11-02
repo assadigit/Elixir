@@ -134,19 +134,41 @@ _QUICK_CARDS: list[tuple[str, str, str, str, bool]] = [
     ),
 ]
 
-# Reflow (spec §6/P2): the reference's three equal columns at wide content
-# runs, two at medium, one on narrow windows. V0.6.81: the DECISION is no
-# longer made against these fixed thresholds — the column count is derived
-# from the cards' measured minimum widths (see _relayout_quick_grid), so a
-# column count is only chosen when the real, current font metrics say the
-# columns FIT. The constants remain as the documented design intent (the
-# reference's 3-column band) and as the minimum window's guaranteed floor.
+# Reflow (spec §6/P2 + Round-3 §4.1): the reference's three equal columns
+# at wide content runs, two at medium, one on narrow windows. V0.6.83
+# (Round-3 §4.1): the decision is TIERED —
+#   * three columns only while every card keeps its SINGLE-LINE title
+#     (the measured comfort width: the widest title on the RUNNING font
+#     stack + the card chrome),
+#   * two columns down to the readability floor (_TOOL_CARD_FLOOR_W —
+#     2-line titles, wrapped descriptions, never a clip),
+#   * one column only when even two floor-width cards cannot fit —
+# and the V0.6.81 measured page-minimum verification still runs beneath
+# it (a count is only KEPT when the page's real minimum fits the viewport
+# the scroll area is offering). The fixed 820/520 thresholds live on only
+# as the documented design intent of the reference's 3-column band.
 _GRID_3_MIN_W = 820
 _GRID_2_MIN_W = 520
 # V0.6.82 (Round-2 correction): the reference's inter-card gap measured
 # 12-13 px (row bands [510..634]/[646..770]/[781..912]) vs the previous 15 —
 # kept in sync with the setSpacing call in _build_quick_tools.
 _GRID_GAP = 13
+
+# ── the Round-3 hero rhythm (V0.6.83, spec §6) ───────────────────────────
+# The hero's target height is BODY-driven: ~0.325 of the scroll viewport's
+# height (the reference composes its hero at ~0.38 of the body — the
+# Round-3 audit explicitly directs "reduce its relative height"), clamped
+# to the 220–250 px band's neighbourhood at the 1440×900 composition and
+# never below the 240 floor (the spec's band bottom plus the CTA's 44 px
+# touch floor) nor above the 336 reference rhythm.
+_HERO_BODY_RATIO = 0.325
+_HERO_MIN_H = 240
+_HERO_MAX_H = 336
+# The reference text-column rhythm the hero's typography/spacing scales
+# from (the V0.6.82 ink-calibrated values: 33 top, 16/12/36/18 gaps, the
+# 39 px two-line headline, 18 px two-line support, the 57 px capsule CTA)
+# — at scale 1.0 the column measures ≈336 px, the reference hero's height.
+_HERO_RHYTHM_BASE_H = 336
 
 
 if TYPE_CHECKING:  # pragma: no cover — typing only
@@ -342,7 +364,10 @@ class HomeView(QWidget):
         # never duplicated as a tile; spec §6 / decision Q7). V0.6.78: the
         # reference's ~40 px breathing room after the hero. V0.6.82:
         # measured 43 px (hero bottom 430 → heading ink 473).
-        root.addSpacing(43)
+        # V0.6.83 (Round-3 §6): the spec's band for the gap at the 1440×900
+        # composition is 24–32 px — 28 lands mid-band and keeps all three
+        # grid rows on one page at the primary acceptance target.
+        root.addSpacing(28)
         root.addLayout(self._build_quick_tools())
 
         root.addStretch()
@@ -386,16 +411,29 @@ class HomeView(QWidget):
         # V0.6.82: measured rhythm (ink positions vs the reference:
         # eyebrow 132/134, heading 171/171, support 277/277, CTA
         # 352/352) — the column opens 33 px below the hero top and the
-        # pre-CTA air is 36 (the reference's support block is taller:
-        # its pseudo-text runs a ~30 px line pitch vs Inter's 24 at 18 px,
-        # so the gap absorbs the difference).
-        text_col.addSpacing(33)
+        # pre-CTA air is 36.
+        # V0.6.83 (Round-3 §6): the fixed rhythm spacers become SCALEABLE
+        # QSpacerItems — _scale_hero_typography retunes them (× the hero
+        # scale s) so the text column tracks the body-driven hero target
+        # instead of locking the card at the 336 px reference height.
+        self._hero_spacers: list[tuple[object, int]] = []
+
+        def _rhythm(base: int) -> None:
+            """Append one scalable rhythm spacer (base px at scale 1.0)."""
+            from PySide6.QtWidgets import QSizePolicy, QSpacerItem
+
+            item = QSpacerItem(0, base, QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+            self._hero_spacers.append((item, base))
+            text_col.addItem(item)
+
+        _rhythm(33)
 
         # The reference hero's eyebrow — small, tracked-out, sage.
         eyebrow = QLabel("WELCOME TO ELIXIR")
         eyebrow.setObjectName("Eyebrow")
+        self._hero_eyebrow = eyebrow
         text_col.addWidget(eyebrow)
-        text_col.addSpacing(16)
+        _rhythm(16)
 
         # V0.6.81: the reference's EXACT two-line break is explicit — a
         # hard newline in the label text. The V0.6.78 wrap-cap approach
@@ -414,7 +452,7 @@ class HomeView(QWidget):
         heading.setWordWrap(True)
         heading.setMaximumWidth(545)
         text_col.addWidget(heading)
-        text_col.addSpacing(12)
+        _rhythm(12)
 
         # V0.6.82 (Round-2 correction): the reference's EXACT two-line
         # support break is pinned the same way the headline is — greedy
@@ -432,20 +470,23 @@ class HomeView(QWidget):
         support.setWordWrap(True)
         support.setMaximumWidth(520)
         text_col.addWidget(support)
-        text_col.addSpacing(36)
+        _rhythm(36)
 
         # ONE clear primary action (spec §6). Decision Q7: the header
         # "✨ Process Wizard" button is gone; the hero owns the entry and
         # both landed in the same milestone so the primary entry never
         # gaps. The tooltip is the removed header button's exact copy.
+        # V0.6.83 (Round-3 §6): the CTA keeps a 44 px touch floor while
+        # _scale_hero_typography scales its QSS padding with the hero.
         self.cta_btn = _HeroCTA("Start Conversion")
         self.cta_btn.setObjectName("HeroPrimary")
         self.cta_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.cta_btn.setToolTip("Open the guided step-by-step conversion wizard")
+        self.cta_btn.setMinimumHeight(44)
         self._set_cta_icon()
         self.cta_btn.clicked.connect(self.start_requested.emit)
         text_col.addWidget(self.cta_btn, 0, Qt.AlignmentFlag.AlignLeft)
-        text_col.addSpacing(18)
+        _rhythm(18)
         text_col.addStretch()
 
         lay.addLayout(text_col, 1)
@@ -479,19 +520,23 @@ class HomeView(QWidget):
         self.cta_btn.setIconSize(QSize(16, 16))
         self.cta_btn.setIcon(icon("play", theme_manager.palette.text_on_accent, 16))
 
-    # ── the hero illustration (decision Q5) ──────────────────────────────
-    def _flattened_hero_pixmap(self, max_w: int):
-        """The supplied illustration scaled to ≤ ``max_w`` px wide with its
-        alpha flattened onto the CURRENT hero card colour.
+    # ── the hero illustration (decision Q5 + Round-3 §5) ───────────────────
+    def _scaled_hero_pixmap(self, max_w: int):
+        """The still-life as a TRUE transparent RGBA pixmap, scaled to ≤
+        ``max_w`` px wide (V0.6.83, Round-3 §5).
 
-        The asset is 632×330 RGBA with a soft halo quarter (the M1
-        inspection): pasting it straight onto a different ground would
-        leave a pale rectangle. Compositing against the exact ``QFrame#
-        HeroCard`` fill (``palette.bg_hero`` — MUST stay in sync with
-        the QSS rule) keeps the halo invisible in BOTH themes — and is
-        why ``refresh_theme`` re-runs this instead of caching one pixmap.
+        The asset is 632×330 RGBA; its background pixels are genuinely
+        transparent (alpha 0 with feathered edges — the §5.2 validation),
+        so the books/quill/inkwell composite DIRECTLY over the hero card's
+        painted surface (cream ground + sage washes + landscape curve) —
+        the layered composition the spec §5.3 requires. The V0.6.78–82
+        "flatten onto ``bg_hero``" step is RETIRED: it baked an opaque
+        rectangle that occluded the card's painted decoration — the exact
+        "visible rectangular boundary" the Round-3 audit flags. The QLabel
+        paints transparently (QSS ``QLabel`` base rule), so the asset's
+        alpha halo now blends over BOTH themes' decorated hero surface.
         """
-        from PySide6.QtGui import QColor, QImage, QPainter, QPixmap
+        from PySide6.QtGui import QPixmap
 
         src_path = _project_root() / "assets" / "hero_books_quill.png"
         if not src_path.exists():
@@ -504,30 +549,15 @@ class HomeView(QWidget):
         # reference's still-life FILLS its band, so crop to the ink (plus
         # a 6 px cushion) before scaling; otherwise the visible books
         # render ~25% smaller than the reference at the same box.
-        # V0.6.82 (Round-2 correction): the reference's artwork ink spans
-        # 543 px ([945..1486]) — LARGER than the 504 px native crop, so
-        # the old `min(max_w, crop.width())` hard-capped the visual at
-        # native scale and always came up ~40 px short. The budget (and
-        # its 0.55×width cap) now fully governs the size; the ~1.07×
-        # upscale at the reference viewport is invisible at screen DPI.
         crop = self._asset_ink_crop(src)
         w = max_w
         h = max(1, round(crop.height() * w / crop.width()))
-        flat = QImage(w, h, QImage.Format.Format_ARGB32_Premultiplied)
-        flat.fill(QColor(theme_manager.palette.bg_hero))
-        painter = QPainter(flat)
-        painter.drawPixmap(
-            0,
-            0,
-            crop.scaled(
-                w,
-                h,
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation,
-            ),
+        return crop.scaled(
+            w,
+            h,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
         )
-        painter.end()
-        return QPixmap.fromImage(flat)
 
     @staticmethod
     def _asset_ink_crop(src: QPixmap):
@@ -557,25 +587,23 @@ class HomeView(QWidget):
         return HomeView._ink_crop
 
     def _apply_hero_pixmap(self) -> None:
-        """(Re)composite the illustration at the size the current hero
+        """(Re)apply the illustration at the size the current hero
         supports, then apply the narrow-width hide rule.
 
-        V0.6.78 (visual-fidelity pass): the reference renders the
-        books/inkwell/quill at effectively NATIVE scale filling the
-        hero's height — the budget is now HEIGHT-driven (the hero's
-        interior height, capped at ~55% of the interior width so narrow
-        windows keep their text room), replacing V0.6.75's width
-        fraction. The pixmap stays cached per (budget step, card tint).
+        V0.6.83 (Round-3 §5): the pixmap is now TRANSPARENT — it carries no
+        baked surface, so the cache key is the budget alone (a theme toggle
+        no longer recomposites anything; refresh_theme still calls through
+        here, a no-op when the key is unchanged).
         """
         budget = self._hero_image_budget()
-        key = (budget, theme_manager.palette.bg_hero)
+        key = (budget,)
         if key != self._hero_pm_key:
             if budget == 0:
                 self._hero_pm_key = ("hidden",)
                 self._hero_visual.setVisible(False)
                 self._hero_visual_w = 0
                 return
-            pm = self._flattened_hero_pixmap(budget)
+            pm = self._scaled_hero_pixmap(budget)
             if pm is None:
                 self._hero_pm_key = ("missing",)
                 self._hero_visual.setVisible(False)
@@ -586,30 +614,75 @@ class HomeView(QWidget):
             self._hero_visual_w = pm.width()
         self._hero_visual.setVisible(budget > 0)
 
+    # ── the Round-3 hero geometry (V0.6.83, spec §2/§6) ───────────────────
+    def _body_height(self) -> int:
+        """The TRUE available height for the dashboard: the enclosing
+        scroll area's VIEWPORT height (not ``self.height()`` — once the
+        content overflows, the view grows past the viewport and would
+        feed the hero rule a number the user never sees)."""
+        from PySide6.QtWidgets import QScrollArea
+
+        p = self.parent()
+        while p is not None:
+            if isinstance(p, QScrollArea):
+                h = p.viewport().height()
+                if h > 0:
+                    return h
+            p = p.parent()
+        return max(1, self.height() or 640)
+
+    def _hero_target_h(self) -> int:
+        """The Round-3 hero height: ~0.325 of the available body height,
+        clamped [_HERO_MIN_H, _HERO_MAX_H]. Spec §6: "approximately
+        220–250 px, adapting gently to available space" — at the 1440×900
+        composition (764 px of body) this lands ≈248; the reference window
+        (888 px of body) gets ≈289 — the audit's "reduce its relative
+        height" vs the reference's ~0.38 share."""
+        return max(_HERO_MIN_H, min(_HERO_MAX_H, round(self._body_height() * _HERO_BODY_RATIO)))
+
+    def _hero_text_need_w(self) -> int:
+        """The minimum text column the PINNED hero copy needs at the current
+        scale (V0.6.83, Round-3 §5.3/§6): the measured width of the heading's
+        wider hard line and the support's first line on the RUNNING font
+        metrics (the labels' own styled fonts — weight included), plus air.
+
+        The art budget respects this FIRST — the still-life yields before
+        the text column ever wraps the pinned two-line breaks (the V0.6.81
+        hard-newline guarantee at every supported size)."""
+        need = 320
+        heading = getattr(self, "_hero_heading", None)
+        if heading is not None:
+            fm = heading.fontMetrics()
+            need = max(
+                need,
+                fm.horizontalAdvance("clear, structured knowledge."),
+                fm.horizontalAdvance("Turn documents into"),
+            )
+        support = getattr(self, "_hero_support", None)
+        if support is not None:
+            need = max(
+                need,
+                support.fontMetrics().horizontalAdvance(
+                    "Books, articles and documents — summarized, organized"
+                ),
+            )
+        return need + 30
+
     def _hero_image_budget(self) -> int:
-        """Illustration width for the current hero size: the interior
-        HEIGHT fit (the reference's native-scale still-life), capped at
-        55% of the interior width; 0 below the hide floor (spec §7
+        """Illustration width for the current hero size: the Round-3 hero
+        target's HEIGHT fit (the reference's still-life spans ~92% of the
+        panel height, aspect 504/318), capped at 55% of the view width and
+        — V0.6.83 — by the text column's measured need (the art yields
+        before the pinned copy wraps); 0 below the hide floor (spec §7
         narrow-width rule)."""
         if self.width() < _HERO_IMAGE_MIN_VIEW_W:
             return 0
-        # The height target is the reference-proportioned hero height
-        # (~29% of the content width, clamped 230–340) — NOT the card's
-        # live height, which the pixmap itself would inflate (a feedback
-        # loop: taller card → bigger budget → taller pixmap → …).
-        # V0.6.82 (Round-2 correction): the reference's artwork is
-        # FULL-BLEED — its ink spans [945..1486] of the hero [308..1487]
-        # (543 px wide, ~92% of the panel height). inner_h drops the old
-        # −8 safety bite (target+2) so the visual lands at ~540 px at the
-        # reference viewport instead of 520, reaching the hero's right
-        # edge exactly as the reference paints it.
-        target_h = max(230, min(340, round(self.width() * 0.29)))
-        inner_h = target_h + 2
-        if inner_h < 110:
-            inner_h = 222  # pre-first-layout fallback (230 - 8)
-        by_h = round(inner_h * 504 / 318)  # the ink-crop's aspect
+        target_h = self._hero_target_h()
+        by_h = round((target_h + 2) * 504 / 318)  # the ink-crop's aspect
         by_w = round(self.width() * 0.55)
-        raw = max(120, min(by_h, by_w))
+        card_w = max(0, self.width() - 22 - 29)
+        by_text = card_w - 26 - 18 - self._hero_text_need_w()
+        raw = max(120, min(by_h, by_w, by_text))
         return raw // _HERO_IMAGE_STEP * _HERO_IMAGE_STEP
 
     # ══════════════════════════════════════════════════════════════════════
@@ -665,6 +738,25 @@ class HomeView(QWidget):
         self._relayout_quick_grid()
         return section
 
+    def _card_comfort_width(self) -> int:
+        """The Round-3 §4.1/§4.3 COMFORT width: the widest card title
+        measured on the RUNNING font stack (each card's OWN styled label
+        metrics — V0.6.81's font-stack-proof measurement, kept) plus the
+        card chrome (_TOOL_CARD_CHROME_W). Three columns are only chosen
+        while a third of the grid gives every card this width — the
+        reference's single-line titles; anything narrower takes two
+        comfortable columns instead of three wrapped ones."""
+        from ui_qt.components.dashboard_primitives import _TOOL_CARD_CHROME_W as chrome
+
+        widest = 0
+        for card in getattr(self, "_quick_cards", []) or []:
+            label = getattr(card, "_title_label", None)
+            if label is None:
+                continue
+            fm = label.fontMetrics()
+            widest = max(widest, fm.horizontalAdvance(label.text()))
+        return widest + chrome
+
     def _relayout_quick_grid(self) -> None:
         """(Re)place the cards into the grid at the column count the current
         width ACTUALLY supports — the reference's three equal columns, two
@@ -672,28 +764,30 @@ class HomeView(QWidget):
         widgets — they are re-added, never rebuilt (click routing + focus
         live on the card, so a reflow loses nothing).
 
-        V0.6.81 (the Windows "not enough space" fix): the count is decided
-        by MEASUREMENT, not by fixed pixel thresholds. Candidates are tried
-        from the reference's 3 down to 1, and a count is only kept when the
-        page's own measured minimum — every card title, the heading row and
-        the hero at the REAL metrics of the running font stack — fits the
-        width the scroll viewport is actually offering. The old fixed
-        thresholds (820/520) were tuned on the dev box's Inter and
-        UNDER-estimated what other stacks need: on a Windows machine
-        (Segoe UI ~10% wider when the bundled Inter fails to register) a
-        ~530 px content run picked 2 columns needing ~620 px, the home
-        view's minimum width exceeded the scroll viewport, and the right
-        column + the "View all tools" action clipped out of sight — while
-        the dev-side preview, rendering the same geometry with narrower
-        glyphs, looked fine. Measurement cannot drift from any font stack:
-        whatever the metrics, the count only drops when the REAL minimum
-        says the columns cannot fit.
+        V0.6.83 (Round-3 §4.1): the candidate ceiling is TIERED —
+
+        * 3 while a third of the grid still gives every card its
+          SINGLE-LINE title (the measured comfort width — see
+          _card_comfort_width),
+        * 2 down to the readability floor (_TOOL_CARD_FLOOR_W: wrapped
+          2-line titles, never a clip),
+        * 1 only when even two floor-width cards cannot fit.
+
+        The spec's initial thresholds (900/600) are refined exactly as
+        §4.1 directs ("Refine them based on card minimum width and runtime
+        measurements"): the measured comfort lands the 3-column band at
+        ≈1035 px of grid width, the 2-column band down to ≈557 px.
+
+        V0.6.81 (the Windows "not enough space" fix) stays as the safety
+        net beneath the tiers: a candidate count is only KEPT when the
+        page's own measured minimum — every card title, the heading row
+        and the hero at the REAL metrics of the running font stack — fits
+        the width the scroll viewport is actually offering. Measurement
+        cannot drift from any font stack.
 
         The width the decision is made against is ``self.width()`` — the
         TRUE space on offer, guaranteed by the explicit 1x1 minimum set in
-        ``__init__`` (see the note there: without it the scroll area clamps
-        this view at its own layout minimum and the reflow never sees a
-        narrower viewport).
+        ``__init__``.
 
         Qt quirk this lives with: re-parenting layout items does not, by
         itself, refresh the PAGE-level ``layout().minimumSize()`` — its
@@ -703,8 +797,20 @@ class HomeView(QWidget):
         recomputes the page minimum SYNCHRONOUSLY — the check below always
         runs against live numbers, in the same event, with no deferred
         settling."""
+        from ui_qt.components.dashboard_primitives import _TOOL_CARD_FLOOR_W as floor
+
         width = max(self.width(), 1)
+        grid_w = max(0, width - 22 - 29)  # the page's own content margins
+        comfort = self._card_comfort_width()
+        if grid_w >= 3 * comfort + 2 * _GRID_GAP:
+            cand = 3
+        elif grid_w >= 2 * floor + _GRID_GAP:
+            cand = 2
+        else:
+            cand = 1
         for cols in (3, 2, 1):
+            if cols > cand:
+                continue
             if cols != self._grid_cols:
                 self._lay_grid_columns(cols)
             if self.layout().minimumSize().width() <= width:
@@ -750,79 +856,109 @@ class HomeView(QWidget):
 
     def resizeEvent(self, event) -> None:  # type: ignore[override]  # noqa: N802 (Qt naming)
         super().resizeEvent(event)
-        # V0.6.78: the hero keeps the reference's wide/shallow proportion
-        # (~29% of the content width — 340 px at the 1180 px reference
-        # content run), clamped 230–340 so narrow windows still breathe.
-        hero_h = max(240, min(340, round(self.width() * 0.29)))
+        # V0.6.83 (Round-3 §6): the hero height is BODY-driven — ~0.325 of
+        # the scroll viewport's height (see _hero_target_h), replacing the
+        # V0.6.78 width-share rule. The V0.6.81 guarantee stays: MINIMUM,
+        # not fixed — a taller font stack stretches the hero instead of
+        # clipping the text column.
+        hero_h = self._hero_target_h()
         if getattr(self, "_hero", None) is not None and getattr(self, "_hero_h", None) != hero_h:
             self._hero_h = hero_h
-            # V0.6.81: MINIMUM, not FIXED. The fixed height clipped the
-            # hero's text column on wider/taller font stacks (Windows Segoe
-            # UI needs ~15% more vertical room than the dev font at the
-            # same px size — the CTA / the heading's last line were cut at
-            # the 240 px floor). A wordWrap label's height-for-width
-            # minimum now grows the hero exactly as much as the real text
-            # needs and NO more: at the reference viewport (Inter) the
-            # layout minimum stays ≈320 px < 340, so the V0.6.80 guarantee
-            # (the full dashboard fits with NO scrollbar) is preserved,
-            # while a taller font stack stretches the hero instead of
-            # clipping it.
             self._hero.setMinimumHeight(hero_h)
-        # V0.6.79 (spec P2): at narrow content runs the hero's typography
-        # scales DOWN with the width (never below 55% — the hierarchy is
-        # preserved; a 41 px headline cannot fit a 217 px column, which
-        # clipped "documents" at the 560 px minimum window).
+        # V0.6.79 (spec P2) + V0.6.83: the hero's typography AND rhythm
+        # scale with the hero target (see _scale_hero_typography).
         self._scale_hero_typography()
         # Spec §7: the illustration yields at narrow widths so the hero
-        # text keeps its room (re-compositing when the size bucket
-        # changes); spec §6: the grid reflows with width.
+        # text keeps its room (re-scaling when the size bucket changes);
+        # spec §6: the grid reflows with width.
         self._apply_hero_pixmap()
         self._relayout_quick_grid()
 
     def _scale_hero_typography(self) -> None:
-        """Scale the hero's display type with the available width (the
-        reference's 41/22 px at the 1180 px content run, down to 55% at
-        the narrow minimum window) — and re-cap the wrap widths so the
-        words always fit their column."""
+        """Scale the hero's display type AND rhythm with the Round-3 hero
+        target (V0.6.83, spec §6).
+
+        The scale s = hero_target / 336 (the reference rhythm's height),
+        additionally capped by the width fit (the V0.6.79 rule: a 41 px
+        headline cannot fit a 217 px column) and floored at 55% — the
+        hierarchy is preserved at every supported size. Everything in the
+        text column tracks s: the rhythm spacers, the eyebrow/headline/
+        support sizes, the CTA's QSS padding (its 44 px touch floor holds),
+        and the wrap caps so the words always fit their column."""
         from ui_qt.theme import FONT
 
         if getattr(self, "_hero_heading", None) is None:
             return
-        scale = max(0.55, min(1.0, self.width() / 1180))
+        hero_h = self._hero_target_h()
+        scale = max(0.55, min(1.0, min(hero_h / _HERO_RHYTHM_BASE_H, self.width() / 1180)))
         # _HERO_HEADLINE_PX (V0.6.81): the measured fit for the reference's
         # exact two-line break — see the constant's note.
         hero_px = max(22, round(_HERO_HEADLINE_PX * scale))
         support_px = max(13, round(FONT.body_lg * scale))
-        # V0.6.81: the wrap caps are re-applied on EVERY call — they used
-        # to sit below the font-size early-return, so while the scale was
-        # pegged at the 0.55 floor (every width < ~650 px) a column that
-        # had narrowed kept its stale, too-wide cap from the last resize
-        # above the floor. The cap is a maximum, so the stale value never
-        # clipped text, but it defeated the intended 2-line wrap tuning.
+        eyebrow_px = max(10, round(14 * scale))
+        cta_px = max(12, round(16 * scale))
+        # V0.6.81: the wrap caps are re-applied on EVERY call — the cap is
+        # a maximum, so a stale value never clips text, but re-applying
+        # keeps the intended 2-line wrap tuning as the column narrows.
         col = max(160, self.width() - 90)
         self._hero_heading.setMaximumWidth(max(200, min(round(545 * scale), col)))
         self._hero_support.setMaximumWidth(max(190, min(round(520 * scale), col)))
-        if getattr(self, "_hero_scale", None) == (hero_px, support_px):
+        state = (
+            hero_px,
+            support_px,
+            eyebrow_px,
+            cta_px,
+            round(scale * 100),
+        )
+        if getattr(self, "_hero_scale", None) == state:
             return
-        self._hero_scale = (hero_px, support_px)
+        self._hero_scale = state
+        p = theme_manager.palette
         self._hero_heading.setStyleSheet(
             f"font-size: {hero_px}px; font-weight: 600;"
-            f"color: {theme_manager.palette.text_primary}; background: transparent;"
+            f"color: {p.text_primary}; background: transparent;"
         )
         self._hero_support.setStyleSheet(
-            f"font-size: {support_px}px; color: {theme_manager.palette.text_secondary};"
-            f" background: transparent;"
+            f"font-size: {support_px}px; color: {p.text_secondary}; background: transparent;"
         )
+        # The eyebrow (tracked uppercase) — the QSS #Eyebrow rule carries
+        # the tracking; the per-widget override only retunes the size.
+        self._hero_rhythm_scale = scale
+        eyebrow = getattr(self, "_hero_eyebrow", None)
+        if eyebrow is not None:
+            eyebrow.setStyleSheet(
+                f"font-size: {eyebrow_px}px; font-weight: 600;"
+                f"color: {p.sage}; background: transparent;"
+            )
+        # The CTA: QSS padding/typography scale with s (the 44 px touch
+        # floor from _build_hero holds); the capsule painter follows the
+        # widget rect at any height.
+        pad_v = max(9, round(15 * scale))
+        pad_h = max(28, round(48 * scale))
+        if getattr(self, "cta_btn", None) is not None:
+            self.cta_btn.setStyleSheet(
+                f"padding: {pad_v}px {pad_h}px; font-size: {cta_px}px;font-weight: 600;"
+            )
+        # The rhythm spacers (V0.6.83): every gap in the text column scales
+        # with s — changeSize + activate refreshes the layout minimum
+        # synchronously (same contract as _lay_grid_columns).
+        spacers = getattr(self, "_hero_spacers", None) or []
+        for item, base in spacers:
+            item.changeSize(0, max(1, round(base * scale)))
+        if spacers and self.layout() is not None:
+            self.layout().activate()
 
     # ══════════════════════════════════════════════════════════════════════
     # Theme refresh (the M0 §6 gap list — the M2 surfaces join the
     # refresh-on-toggle path)
     # ══════════════════════════════════════════════════════════════════════
     def refresh_theme(self) -> None:
-        """Re-apply theme-dependent bits: the hero illustration must be
-        re-flattened against the new surface colour and the CTA glyph
-        re-tinted; the Quick Tool cards re-tint (all other chrome is
-        QSS-driven and re-polishes globally)."""
+        """Re-apply theme-dependent bits: the CTA glyph re-tints and the
+        Quick Tool cards re-tint (all other chrome is QSS-driven and
+        re-polishes globally). V0.6.83: the hero illustration is now a
+        TRANSPARENT pixmap — nothing re-composites on a toggle (the call
+        below is kept for the narrow-width hide rule's sake; it is a no-op
+        while the budget key is unchanged)."""
         self._apply_hero_pixmap()
         self._set_cta_icon()
         for card in self._quick_cards:

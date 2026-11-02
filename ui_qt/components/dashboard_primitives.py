@@ -47,9 +47,26 @@ _ICON_STROKE_DASH = 2.05
 _NAV_ITEM_HEIGHT = 37
 _NAV_ITEM_TALL = 45
 _ICON_SIZE_NAV = 21
+# V0.6.83 (Round-3 §3.1): the compact-rail nav profile — smaller glyph,
+# tighter icon→text air; the LABEL word-wraps to two lines instead of
+# shrinking or clipping (spec §3.1: "Do not solve this by making navigation
+# text illegibly small or clipping labels").
+_ICON_SIZE_NAV_COMPACT = 19
 _ICON_SIZE_TOOL = 30
 _ARROW_SIZE = 18
 _ARROW_CIRCLE = 36
+
+# V0.6.83 (Round-3 §4.3): the Quick Tool card's readability floor — the
+# narrowest card at which a two-column row still reads (2-line titles,
+# wrapped descriptions). The reflow decision in home_view pairs this with
+# the MEASURED single-line comfort width; see _relayout_quick_grid.
+_TOOL_CARD_FLOOR_W = 272
+
+# V0.6.83 (Round-3 §4.3): the card's horizontal chrome — kept in sync with
+# QuickToolCard.__init__ (margins 24+18, icon 30, arrow 36, two 18 px gaps).
+# home_view's reflow adds the live-measured title width to this for the
+# single-line COMFORT width (the Round-3 three-column gate).
+_TOOL_CARD_CHROME_W = 24 + 18 + 30 + 36 + 2 * 18
 
 
 class SectionLabel(QLabel):
@@ -94,6 +111,7 @@ class SidebarNavItem(QWidget):
         super().__init__(parent)
         self._icon_name = icon_name
         self._active = False
+        self._compact = False
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setObjectName("SidebarNavItem")
@@ -105,23 +123,52 @@ class SidebarNavItem(QWidget):
         # V0.6.79: the reference's Home pill is ~45 px against the ~37 px
         # tool rows — the tall variant is the selected destination's
         # slightly roomier pill.
-        self.setFixedHeight(_NAV_ITEM_TALL if tall else _NAV_ITEM_HEIGHT)
+        # V0.6.83 (Round-3 §3.1): MINIMUM, not fixed — on a compact rail the
+        # word-wrapped label grows the row instead of clipping (the same
+        # escape V0.6.81 gave the hero).
+        self.setMinimumHeight(_NAV_ITEM_TALL if tall else _NAV_ITEM_HEIGHT)
 
         lay = QHBoxLayout(self)
-        lay.setContentsMargins(12, 2, 12, 2)
-        # V0.6.82: the reference's icon→label air — the label ink lands at
-        # rail x≈93 (icon box [50..71] + 22), matching the measured x=93.
-        lay.setSpacing(22)
-
         self._icon_label = QLabel()
         self._icon_label.setFixedSize(_ICON_SIZE_NAV, _ICON_SIZE_NAV)
         lay.addWidget(self._icon_label, 0, Qt.AlignmentFlag.AlignLeft)
 
+        # V0.6.83 (Round-3 §3.1): the label word-wraps on the compact rail —
+        # the full text stays visible at a legible font size.
         self._text_label = QLabel(label)
         self._text_label.setObjectName("SidebarLabel")
+        self._text_label.setWordWrap(True)
         lay.addWidget(self._text_label, 1)
 
+        self._apply_layout_profile()
         self._apply_style()
+
+    # ── layout profile (V0.6.83, Round-3 §3.1) ──────────────────────────
+    def _apply_layout_profile(self) -> None:
+        """Apply the wide/compact inset profile to this item's layout."""
+        lay = self.layout()
+        if lay is None:
+            return
+        if self._compact:
+            lay.setContentsMargins(9, 2, 9, 2)
+            lay.setSpacing(12)
+            self._icon_label.setFixedSize(_ICON_SIZE_NAV_COMPACT, _ICON_SIZE_NAV_COMPACT)
+        else:
+            # V0.6.82: the reference's icon→label air — the label ink lands
+            # at rail x≈93 (icon box [50..71] + 22), matching x=93.
+            lay.setContentsMargins(12, 2, 12, 2)
+            lay.setSpacing(22)
+            self._icon_label.setFixedSize(_ICON_SIZE_NAV, _ICON_SIZE_NAV)
+
+    def set_compact(self, compact: bool) -> None:
+        """V0.6.83 (Round-3 §3.1): switch the item between the wide
+        (reference) inset profile and the compact-rail profile."""
+        compact = bool(compact)
+        if compact == self._compact:
+            return
+        self._compact = compact
+        self._apply_layout_profile()
+        self._apply_style()  # re-render the glyph at the profile's size
 
     # ── state ───────────────────────────────────────────────────────────
     @property
@@ -145,10 +192,9 @@ class SidebarNavItem(QWidget):
         pale-sage active pill, focus ring) live in the app QSS rules."""
         p = theme_manager.palette
         tint = p.accent if self._active else p.icon
+        size = _ICON_SIZE_NAV_COMPACT if self._compact else _ICON_SIZE_NAV
         self._icon_label.setPixmap(
-            icon(self._icon_name, tint, _ICON_SIZE_NAV, _ICON_STROKE_DASH).pixmap(
-                _ICON_SIZE_NAV, _ICON_SIZE_NAV
-            )
+            icon(self._icon_name, tint, size, _ICON_STROKE_DASH).pixmap(size, size)
         )
         color = p.accent if self._active else p.text_primary
         self._text_label.setStyleSheet(f"color: {color}; background: transparent;")
@@ -261,6 +307,13 @@ class QuickToolCard(QFrame):
         # the previous 119-120) — the minimum rises so the rendered card
         # lands there (min + borders ≈ rendered).
         self.setMinimumHeight(122)
+        # V0.6.83 (Round-3 §4.3): the readability floor — the card never
+        # narrows below a two-column-readable width on its OWN initiative;
+        # the reflow's tier decision (home_view) enforces it against the
+        # viewport, and this explicit minimum keeps a one-column page from
+        # squeezing the card when the viewport itself is narrower (tiny
+        # screens: the viewport wins, never a clip).
+        self.setMinimumWidth(_TOOL_CARD_FLOOR_W)
         self._arrow = _ArrowAffordance()
         self._arrow.set_featured(featured)
 
@@ -269,9 +322,13 @@ class QuickToolCard(QFrame):
         # before the arrow disc at the right. V0.6.82: the icon→text gap
         # widens to 24 so the title ink lands at card+~86 (reference +90,
         # was +66) — the reference's text column is visibly airier.
+        # V0.6.83 (Round-3 §4.3): the insets tighten (24/14/18/14, gap 18)
+        # so a three-column row at the 1440-wide composition keeps
+        # single-line titles — the Round-2 28/20/24 chrome needed ~375 px
+        # per card, and a 353 px Round-3 column wrapped the longest titles.
         lay = QHBoxLayout(self)
-        lay.setContentsMargins(28, 16, 20, 16)
-        lay.setSpacing(24)
+        lay.setContentsMargins(24, 14, 18, 14)
+        lay.setSpacing(18)
 
         self._icon_label = QLabel()
         self._icon_label.setFixedSize(_ICON_SIZE_TOOL, _ICON_SIZE_TOOL)
@@ -287,6 +344,8 @@ class QuickToolCard(QFrame):
         text_col.addStretch(1)
         self._title_label = QLabel(title)
         self._title_label.setObjectName("ToolTitle")
+        # V0.6.83 (Round-3 §4.3): wrap instead of clip on narrow columns.
+        self._title_label.setWordWrap(True)
         text_col.addWidget(self._title_label)
         if description:
             self._desc_label = QLabel(description)

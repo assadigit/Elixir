@@ -31,6 +31,60 @@
 >    information invented; the commits remain the authoritative record.
 
 
+## V0.6.83 — UI/UX correction Round 3: the properly sized window (1440×900 first-run target, the screen-derived 1100×720 minimum, implausibly-small restores clamped up), the responsive sidebar rail (clamp(180, 0.18·w, 260) with a compact profile and word-wrapped nav labels), the body-driven hero (~0.325 of the viewport, a fully scalable text rhythm, and the still-life as a TRUE transparent RGBA composite — the baked rectangle retired), and the tiered Quick Tools reflow (measured single-line comfort gate above the readability floor)
+
+The Round-3 correction spec (`ELIXIR_UI_UX_CORRECTION_ROUND_3.md`) measured
+the shipped dashboard against the approved reference and found the primary
+defect was the WINDOW: a ~893×609-class geometry with a ~30% sidebar could
+only ever compose one clipped card column. This pass fixes both levels
+exactly as the spec directs:
+
+- **§2.1/§2.2 — the window**: `target_default_size` (1440×900 wherever the
+  work area comfortably supports it; the V0.6.81 ~92% rule stays for smaller
+  work areas), `minimum_window_size` (the 1100×720 band wherever supported,
+  ~96% of the work area below that, 760×440 absolute floor), and the
+  implausibly-small restore clamp (`min_wh` in `sanitize_restore_plan` —
+  "never keep restoring an accidentally tiny geometry"). Measured: fresh
+  launch opens at exactly 1440×900 centered on a 1920×1080 work area; the
+  minimum is byte-identical to the spec's 1100×760 stress size.
+- **§3.1 — the rail**: `clamp(180, 0.18 × window_width, 260)` applied from
+  `ElixirWindow.resizeEvent` → `Sidebar.set_rail_width` (the parent owns the
+  rule; Qt layout propagation, never absolute positioning). Below 232 px the
+  compact profile swaps in (tighter brand row, nav labels that word-wrap to
+  two lines — full text at legible sizes, never clipped, never shrunk).
+- **§3.3/§6 — the chrome**: top bar 68→50, status strip 56→42, hero→tools
+  gap 43→28.
+- **§5 — the hero art**: the V0.6.78–82 "flatten onto `bg_hero`" step is
+  RETIRED — it baked an opaque rectangle that occluded the card's painted
+  decoration (the audit's "visible rectangular boundary"). The §5.2
+  validation confirms the asset's background pixels are genuinely
+  transparent (alpha 0, feathered edges; checked over light AND dark
+  checkerboards + both themes); the books/quill/inkwell now composite
+  directly over the painted surface.
+- **§6 — the hero composition**: the height is body-driven (~0.325 of the
+  scroll viewport, clamped [240, 336]); the V0.6.82 ink-calibrated text
+  rhythm became scaleable (QSpacerItem rhythm spacers × s, CTA QSS padding
+  × s with a 44 px touch floor); the art budget respects the text column's
+  MEASURED need first (the still-life yields before the pinned two-line
+  breaks ever wrap). At 1440×900: hero ≈254, NO scrollbar, all three rows
+  visible.
+- **§4 — the reflow tiers**: 3 columns only while every card keeps its
+  single-line title (the measured comfort width on the RUNNING font stack
+  + the tightened card chrome 24/14/18/14 gap 18), 2 down to the 272 px
+  readability floor (word-wrapped titles, never a clip), 1 only when two
+  floor-width cards cannot fit. At 1440×900: 3 columns / 353 px cards; at
+  1280×800: 2 / 471; at 1100×760: 2 / 397; the 893-class widths that used
+  to dead-lock at one clipped column now hold two.
+
+Evidence: the `now4*` set at the repo root (1440×900/1280×800/minimum,
+light + dark, maximized, and the normalized reference overlay + pixel
+difference). Verification: 26 new characterization tests
+(`tests/test_v0683_round3_geometry.py`), the full-suite tally byte-identical
+to the pre-change baseline (7,692 passed / 18 failed / 3 errors — all
+pre-existing sandbox issues reproducing identically on the untouched tree),
+ruff check + format clean, and the AGENTS.md deny-list green.
+
+
 ## V0.6.82 — UI/UX correction Round 2: the ink-calibrated dashboard (every dashboard font re-derived from the reference's glyph-ink WIDTHS, not AA-spread heights), the hero rhythm landing within 2-4 px of the reference's ink positions, the reference's airy CTA capsule (painted deterministically — the QApplication-level QSS paints QPushButton squares on three independent renderers), the retired-grid-column stretch fix (2/1-column reflows were rendering beside a dead stretch-1 column), and the artwork's full-bleed right edge
 
 The Round-2 field report: *"Your preview of the UI looks a lot more like

@@ -69,9 +69,10 @@ from utils.geometry import (
     DEFAULT_H,
     DEFAULT_W,
     GEOMETRY_SCHEMA_VERSION,
-    reference_default_size,
+    minimum_window_size,
     restored_geometry_is_visible,
     sanitize_restore_plan,
+    target_default_size,
 )
 from utils.settings import user_data_dir
 from utils.single_instance import focus_ack_indicates_visible, primary_reply
@@ -101,19 +102,16 @@ class ElixirWindow(QMainWindow):
         # restore ceiling) live in utils.geometry — the single source of
         # truth.
         #
-        # V0.6.81: the minimum rises 560x400 → 760x440. The 560 floor predates
-        # the M2 dashboard: at 560 logical px the sidebar rail (265) + the
-        # backdrop margins (42) + the home view's own insets leave a ~200 px
-        # content run — NARROWER than one Quick Tool card's title-driven
-        # minimum (~300 px on Inter, ~340 on Segoe UI), so the home page
-        # could only ever render clipped (horizontal scrolling is disabled
-        # by design, per the correction spec §Quick Tools: "Never clip cards
-        # or create horizontal scrolling"). 760 is the narrowest window at
-        # which ONE column always fits with the rail on BOTH font stacks
-        # (a 397 px content run vs the ~360/366 px one-column page minimum)
-        # — the grid reflows to 1 column below that and never overflows.
-        # The default OPENING size is now screen-aware (see _restore_geometry).
-        self.setMinimumSize(760, 440)
+        # V0.6.81: the minimum rose 560x400 → 760x440 (the one-column
+        # no-clip floor); the default OPENING size became screen-aware.
+        #
+        # V0.6.83 (Round-3 §2.2): the minimum is now SCREEN-DERIVED — the
+        # 1100x720 band minimum wherever the work area supports it (the
+        # Round-3 composition: at 1100 the responsive rail is ~198 and the
+        # Quick Tools grid holds two comfortable columns), scaling down to
+        # ~96% of the work area on smaller screens, never below the 760x440
+        # absolute floor. utils.geometry owns the decision (pure, tested).
+        self.setMinimumSize(*self._window_minimum())
         self._restore_geometry()
 
         # V0.6.77 (visual-fidelity pass): the reference presents ELIXIR as
@@ -196,6 +194,10 @@ class ElixirWindow(QMainWindow):
         shell_lay.addWidget(body, 1)
         shell_lay.addWidget(self._build_status_strip())
         self._backdrop_lay.addWidget(self._shell)
+        # V0.6.83 (Round-3 §3.1): seed the responsive rail from the current
+        # window size — resizeEvent keeps it tracking clamp(180, 0.18*w, 260)
+        # from here on.
+        self._update_sidebar_rail()
 
         self.setCentralWidget(backdrop)
 
@@ -240,7 +242,12 @@ class ElixirWindow(QMainWindow):
         """
         bar = QFrame()
         bar.setObjectName("TopBar")
-        bar.setFixedHeight(68)
+        # V0.6.83 (Round-3 §3.3/§6): 68 → 50. The correction spec pins the
+        # header at "roughly 44–52 logical px" (§6: "Header: around 44–52
+        # px") — the V0.6.77 68 was the reference mockup's chunkier frame;
+        # every control (pill, Settings, theme, window buttons) fits at 50
+        # and the drag region stays ≥ 40 px tall.
+        bar.setFixedHeight(50)
         lay = QHBoxLayout(bar)
         lay.setContentsMargins(18, 0, 10, 0)
         lay.setSpacing(0)
@@ -365,10 +372,13 @@ class ElixirWindow(QMainWindow):
             self.backend_pill.setText((name if client else "Local LLM") + "  \u25be")
         tip = [f"Backend: {name} — {'running' if online else 'not running'}."]
         if self._llm_last_statuses:
-            tip.append("All clients: " + "; ".join(
-                f"{getattr(s, 'name', s)} {'\u2713' if getattr(s, 'online', False) else '\u2717'}"
-                for s in self._llm_last_statuses
-            ))
+            tip.append(
+                "All clients: "
+                + "; ".join(
+                    f"{getattr(s, 'name', s)} {'\u2713' if getattr(s, 'online', False) else '\u2717'}"
+                    for s in self._llm_last_statuses
+                )
+            )
         tip.append("Click to open Settings \u2192 AI \u2192 Local Model.")
         self.backend_pill.setToolTip("\n".join(tip))
 
@@ -423,7 +433,10 @@ class ElixirWindow(QMainWindow):
         """
         strip = QFrame()
         strip.setObjectName("StatusStrip")
-        strip.setFixedHeight(56)
+        # V0.6.83 (Round-3 §6): 56 → 42. The correction spec pins the bottom
+        # strip at "approximately 38–44 px" — 42 sits mid-band with the dot,
+        # status word, divider and theme control all clearing it comfortably.
+        strip.setFixedHeight(42)
         self._status_strip = strip
         lay = QHBoxLayout(strip)
         lay.setContentsMargins(36, 0, 20, 0)
@@ -488,7 +501,9 @@ class ElixirWindow(QMainWindow):
         dark.setChecked(current == "dark")
         light.setCheckable(True)
         dark.setCheckable(True)
-        chosen = menu.exec(self._status_theme_btn.mapToGlobal(self._status_theme_btn.rect().bottomLeft()))
+        chosen = menu.exec(
+            self._status_theme_btn.mapToGlobal(self._status_theme_btn.rect().bottomLeft())
+        )
         if chosen is light and current != "light" or chosen is dark and current != "dark":
             self._toggle_theme()
 
@@ -1060,6 +1075,42 @@ class ElixirWindow(QMainWindow):
         # below ~900 px and the backend pill drops its name below ~760 px
         # (the dot + chevron stay; the tooltip carries the full name).
         self._adapt_top_bar_to_width()
+        # V0.6.83 (Round-3 §3.1): the rail tracks the window width —
+        # clamp(180, 0.18*w, 260) logical px. The window owns the rule
+        # (Qt layout propagation, no absolute positioning); the rail's
+        # compact profile follows its own RAIL_COMPACT_BELOW switch.
+        self._update_sidebar_rail()
+
+    def _update_sidebar_rail(self) -> None:
+        """V0.6.83 (Round-3 §3.1): the responsive rail — 17–19% of the
+        window between 180 and 260 logical px, exactly the correction
+        spec's ``clamp(180, 0.18 * window_width, 260)``. Called from
+        resizeEvent (and once after the shell build) so every geometry
+        change re-flows it through the Qt layout system."""
+        sidebar = getattr(self, "sidebar", None)
+        if sidebar is None:
+            return
+        try:
+            target = max(180, min(260, round(self.width() * 0.18)))
+            sidebar.set_rail_width(target)
+        except Exception:
+            logger.debug("sidebar rail update failed", exc_info=True)
+
+    def _window_minimum(self) -> tuple[int, int]:
+        """V0.6.83 (Round-3 §2.2): the screen-derived window minimum —
+        utils.geometry.minimum_window_size (1100x720 where the work area
+        supports it, ~96% of it on smaller screens, 760x440 floor). The
+        no-screen fallback keeps the V0.6.81 absolute floor."""
+        try:
+            from PySide6.QtWidgets import QApplication
+
+            app = QApplication.instance()
+            if app is not None and app.primaryScreen() is not None:
+                avail = app.primaryScreen().availableGeometry()
+                return minimum_window_size(avail.width(), avail.height())
+        except Exception:
+            logger.debug("window minimum probe failed", exc_info=True)
+        return (760, 440)
 
     def _adapt_top_bar_to_width(self) -> None:
         try:
@@ -1229,23 +1280,28 @@ class ElixirWindow(QMainWindow):
             if _GEOMETRY_FILE.exists():
                 with open(_GEOMETRY_FILE) as f:
                     data = json.load(f)
-            # V0.6.81: the no-preference size is the approved reference
-            # composition (1536x1024) scaled to ~92% of the primary
-            # screen's work area — a fresh install finally OPENS at a size
-            # that shows the hero + the full 3x3 grid (the 2026-11-02
-            # field report: fresh Windows installs met a 760x540 window
-            # that could never compose the dashboard — "not enough space").
-            # Pure decision logic stays in utils.geometry (testable).
+            # V0.6.83 (Round-3 §2.1): the no-preference size is the 1440×900
+            # target wherever the work area comfortably supports it (the
+            # correction spec's §2.1 desktop composition), falling back to
+            # the V0.6.81 ~92%-of-work-area rule on smaller screens — a
+            # fresh install OPENS at a size that composes the hero and the
+            # full 3×3 grid with no scrollbar. Pure decision logic stays in
+            # utils.geometry (testable).
             default_wh = None
+            min_wh = None
             try:
                 _app = QApplication.instance()
                 if _app is not None and _app.primaryScreen() is not None:
                     _avail = _app.primaryScreen().availableGeometry()
-                    default_wh = reference_default_size(_avail.width(), _avail.height())
+                    default_wh = target_default_size(_avail.width(), _avail.height())
+                    min_wh = minimum_window_size(_avail.width(), _avail.height())
             except Exception:
                 logger.debug("screen-aware default geometry unavailable", exc_info=True)
             plan = sanitize_restore_plan(
-                data, _screens_rects(QApplication.instance()), default_wh=default_wh
+                data,
+                _screens_rects(QApplication.instance()),
+                default_wh=default_wh,
+                min_wh=min_wh,
             )
             if plan["rejected"] and "x" in data:  # T-b5's warning, kept alive
                 logger.warning(

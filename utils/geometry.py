@@ -79,6 +79,27 @@ MAX_W, MAX_H = 1600, 1000  # V0.6.68 — was 900x620 (the compact-era ceiling)
 # untouched.
 REFERENCE_W, REFERENCE_H = 1536, 1024  # the approved reference window geometry
 
+# V0.6.83 (Round-3 correction, spec §2.1): the first-run TARGET moves to
+# 1440x900. The Round-3 audit measured the shipped dashboard against the
+# approved reference and found the primary defect is the WINDOW: the
+# correction spec pins the desktop composition at 1440x900 ("a logical
+# window size of approximately 1440 x 900 px"), so the target replaces the
+# V0.6.81 1536x1024 composition wherever the work area comfortably supports
+# it; smaller work areas keep the V0.6.81 ~92% behaviour (760x540 floor,
+# 1536x1024 ceiling) via ``reference_default_size``.
+TARGET_W, TARGET_H = 1440, 900
+
+# V0.6.83 (Round-3 correction, spec §2.2): the no-clip window floor rises.
+# The 760x440 minimum predates the Round-3 composition: at 760 logical px
+# the rail (180) + backdrop (44) + home insets leave a ~500 px content run
+# — the Quick Tools grid can only ever render one clipped column there.
+# The spec pins the minimum at "around 1100-1180 px wide / 700-760 px tall
+# WHEN THE SCREEN ALLOWS IT"; on smaller work areas the minimum scales down
+# with the work area (~96%, floored at the 760x440 absolute floor) so it is
+# never larger than a small screen's available work area.
+MIN_WIDE, MIN_TALL = 1100, 720
+MIN_FLOOR_W, MIN_FLOOR_H = 760, 440
+
 
 def reference_default_size(avail_w: int, avail_h: int) -> tuple[int, int]:
     """The V0.6.81 first-run window size: the approved reference composition
@@ -92,6 +113,42 @@ def reference_default_size(avail_w: int, avail_h: int) -> tuple[int, int]:
         h = max(DEFAULT_H, min(REFERENCE_H, round(int(avail_h) * 0.92)))
     except (TypeError, ValueError):
         w, h = DEFAULT_W, DEFAULT_H
+    return w, h
+
+
+def target_default_size(avail_w: int, avail_h: int) -> tuple[int, int]:
+    """The V0.6.83 (Round-3 §2.1) first-run size: 1440x900 when the work
+    area comfortably supports it, otherwise the V0.6.81 ~92% behaviour.
+    Pure (Qt-free); the caller passes the primary screen's
+    ``availableGeometry()`` size. Degenerate input (None/garbage) falls
+    back to the no-screen default."""
+    try:
+        aw, ah = int(avail_w), int(avail_h)
+    except (TypeError, ValueError):
+        return DEFAULT_W, DEFAULT_H
+    if aw <= 0 or ah <= 0:
+        return DEFAULT_W, DEFAULT_H
+    # "Comfortably": the target plus breathing room on both axes — a
+    # work area of exactly 1440x900 leaves zero margin, which is not
+    # "comfortably supporting" it.
+    if aw >= TARGET_W + 60 and ah >= TARGET_H + 60:
+        return TARGET_W, TARGET_H
+    return reference_default_size(aw, ah)
+
+
+def minimum_window_size(avail_w: int, avail_h: int) -> tuple[int, int]:
+    """The V0.6.83 (Round-3 §2.2) window minimum for THIS screen: the
+    1100x720 band minimum when the work area supports it, otherwise ~96%
+    of the work area, never below the 760x440 absolute floor. Pure
+    (Qt-free) so the decision stays unit-testable."""
+    try:
+        aw, ah = int(avail_w), int(avail_h)
+    except (TypeError, ValueError):
+        return MIN_FLOOR_W, MIN_FLOOR_H
+    if aw <= 0 or ah <= 0:
+        return MIN_FLOOR_W, MIN_FLOOR_H
+    w = max(MIN_FLOOR_W, min(MIN_WIDE, round(aw * 0.96)))
+    h = max(MIN_FLOOR_H, min(MIN_TALL, round(ah * 0.96)))
     return w, h
 
 
@@ -122,6 +179,7 @@ def sanitize_restore_plan(
     data: dict,
     screens: list[tuple[int, int, int, int]],
     default_wh: tuple[int, int] | None = None,
+    min_wh: tuple[int, int] | None = None,
 ) -> dict:
     """Decide how to apply a saved window-geometry dict to the CURRENT screens.
 
@@ -157,6 +215,16 @@ def sanitize_restore_plan(
     no-preference size — the caller passes the screen-aware reference size
     (``reference_default_size``) so first runs and migrated fingerprints
     open at the reference composition on THIS machine's screen.
+
+    V0.6.83 (Round-3 §2.1): ``min_wh`` (optional) clamps a restored size UP
+    to the useful minimum for the Round-3 dashboard (spec §2.1: "When
+    restoring saved geometry that is implausibly small for this dashboard,
+    migrate/clamp it to a useful size or fall back to the new default. Do
+    not keep restoring an old, accidentally tiny geometry from a previous
+    version"). The caller passes ``minimum_window_size`` for the current
+    screen. Deliberate hand-resizes ABOVE the minimum are still honored —
+    this only rescues sizes the current composition cannot use. None (the
+    default) keeps the legacy behaviour for the pinned V0.6.67 tests.
     """
     default_w, default_h = default_wh if default_wh else (DEFAULT_W, DEFAULT_H)
     try:
@@ -175,6 +243,16 @@ def sanitize_restore_plan(
         # reference default so those installs finally meet the dashboard
         # the reference composes.
         w, h = default_w, default_h
+    if min_wh is not None:
+        # V0.6.83 (Round-3 §2.1): the implausibly-small migration — clamp
+        # the restored size up to the useful minimum for THIS screen (a
+        # saved 893x609-era geometry can never compose the Round-3
+        # dashboard; the spec forbids restoring it forever).
+        try:
+            w = max(w, int(min_wh[0]))
+            h = max(h, int(min_wh[1]))
+        except (TypeError, ValueError, IndexError):
+            pass
     maximized = bool(data.get("maximized"))
     move_to: tuple[int, int] | None = None
     center_default = True

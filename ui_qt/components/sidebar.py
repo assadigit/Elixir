@@ -57,11 +57,29 @@ from ui_qt.components.dashboard_primitives import SectionLabel, SidebarNavItem
 from ui_qt.components.icons import icon
 from ui_qt.theme import RADIUS, theme_manager
 
-# The fixed rail width — V0.6.77: re-measured from the approved reference
+# The reference rail width — V0.6.77: re-measured from the approved reference
 # (the shell starts at x=22, the rail/content boundary lands at x≈287 →
 # 265 px; the old 210 px QA budget left the rail too narrow for the
 # reference's rhythm and pushed the content start left of the target).
+# V0.6.83 (Round-3 correction, spec §3.1): the rail is no longer FIXED at
+# 265 — it is RESPONSIVE to the window width, ``clamp(180, 0.18*w, 260)``
+# logical px, driven from ``ElixirWindow.resizeEvent`` via
+# ``set_rail_width`` (the parent owns the rule; the rail only applies it).
+# 265 stays the documented reference rail for the 1536-wide composition
+# window (0.18*1536 = 276 clamps to 260 — the reference rail lands within
+# the spec's 17–19% band) and as the wide-profile default before the
+# first resize event.
 SIDEBAR_WIDTH = 265
+
+# V0.6.83 (Round-3 §3.1): the responsive bounds — 17–19% of the window
+# between a 180 floor and a 260 ceiling (“The sidebar must not grow
+# indefinitely when the window gets larger”; “At a 1000 px window width,
+# expect a sidebar around 180 px”). Below RAIL_COMPACT_BELOW the rail
+# switches to the compact profile (tighter brand row, word-wrapped nav
+# labels at smaller insets) so the labels stay fully legible — never
+# clipped, never shrunk to an unreadable size.
+RAIL_MIN, RAIL_MAX = 180, 260
+RAIL_COMPACT_BELOW = 232
 
 # ── Navigation data (the single source of truth for the sidebar IA) ─────────
 # Group label ``None`` = ungrouped items (Home at the top; Settings/About in
@@ -316,6 +334,11 @@ class Sidebar(QFrame):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("SidebarRail")
+        # V0.6.83 (Round-3 §3.1): the rail starts at the reference width; the
+        # parent window's resize logic retunes it to clamp(180, 0.18*w, 260)
+        # from the very first resize/show event.
+        self._rail_w = SIDEBAR_WIDTH
+        self._compact = False
         self.setFixedWidth(SIDEBAR_WIDTH)
 
         self._items: dict[str, SidebarNavItem] = {}
@@ -337,6 +360,7 @@ class Sidebar(QFrame):
         # [128..172]) with the shorter 30 px wordmark.
         bl.setContentsMargins(26, 24, 16, 28)
         bl.setSpacing(16)
+        self._brand_row_lay = bl
         self._brand_leaf = QLabel()
         self._brand_leaf.setFixedSize(48, 48)
         bl.addWidget(self._brand_leaf, 0, Qt.AlignmentFlag.AlignVCenter)
@@ -351,6 +375,7 @@ class Sidebar(QFrame):
         nav = QVBoxLayout(nav_host)
         nav.setContentsMargins(16, 2, 16, 6)
         nav.setSpacing(1)
+        self._nav_host_lay = nav
         for group_label, items in NAV_GROUPS:
             if group_label is not None:
                 nav.addSpacing(32)
@@ -405,6 +430,61 @@ class Sidebar(QFrame):
         self._apply_brand_tints()
 
     # ── geometry ─────────────────────────────────────────────────────────
+    def set_rail_width(self, w: int) -> None:
+        """V0.6.83 (Round-3 §3.1): apply the responsive rail width.
+
+        The PARENT owns the rule (``clamp(180, 0.18 * window_width, 260)``
+        logical px, called from ``ElixirWindow.resizeEvent`` so the rail is
+        always Qt-layout-driven, never absolute-positioned). The rail only
+        clamps to [RAIL_MIN, RAIL_MAX] and switches to the compact profile
+        below RAIL_COMPACT_BELOW so the nav labels keep their full text at
+        legible sizes — the spec forbids solving the narrow rail with
+        microscopic type or clipped labels.
+        """
+        w = max(RAIL_MIN, min(RAIL_MAX, int(w)))
+        if w == self._rail_w:
+            return
+        self._rail_w = w
+        self.setFixedWidth(w)
+        compact = w < RAIL_COMPACT_BELOW
+        if compact != self._compact:
+            self._compact = compact
+            self._apply_profile()
+
+    def _apply_profile(self) -> None:
+        """Re-tune the rail's fixed insets for the active profile (the
+        fluid parts — nav list, brand card — reflow on their own).
+
+        Wide (≥ RAIL_COMPACT_BELOW): the V0.6.82 reference calibration.
+        Compact: the Round-3 narrow-rail adaptation — a tighter brand row
+        (36 px leaf, 24 px wordmark) and tighter nav insets; the nav LABELS
+        word-wrap to two lines (never clipped, never shrunk), so a 180 px
+        rail still reads.
+        """
+        from ui_qt.theme import WEIGHT
+
+        compact = self._compact
+        # ── the brand row ─────────────────────────────────────────────
+        self._brand_row_lay.setContentsMargins(*(18, 22, 12, 24) if compact else (26, 24, 16, 28))
+        self._brand_row_lay.setSpacing(12 if compact else 16)
+        leaf_px = 36 if compact else 48
+        glyph_px = 34 if compact else 44
+        self._brand_leaf.setFixedSize(leaf_px, leaf_px)
+        p = theme_manager.palette
+        self._brand_leaf.setPixmap(icon("leaf", p.accent, glyph_px).pixmap(glyph_px, glyph_px))
+        if compact:
+            self._brand_word.setStyleSheet(
+                f"font-size: 24px; font-weight: {WEIGHT.semibold};"
+                f"color: {p.text_primary}; letter-spacing: 0.2px;"
+                "background: transparent;"
+            )
+        else:
+            self._brand_word.setStyleSheet("background: transparent;")
+        # ── the nav host + items ───────────────────────────────────────
+        self._nav_host_lay.setContentsMargins(*(12, 2, 12, 6) if compact else (16, 2, 16, 6))
+        for item in self._items.values():
+            item.set_compact(compact)
+
     def resizeEvent(self, event) -> None:  # noqa: N802 (Qt naming)
         """Spec §7 narrow-height rule: below _BRAND_MIN_RAIL_H the nav
         and pinned footer keep their space; the decorative brand card
@@ -447,5 +527,8 @@ __all__ = [
     "AUDIO_KEYS",
     "EXPERIMENTAL_KEYS",
     "SIDEBAR_WIDTH",
+    "RAIL_MIN",
+    "RAIL_MAX",
+    "RAIL_COMPACT_BELOW",
     "nav_keys",
 ]
