@@ -123,6 +123,70 @@ def _reset_runtime_state():
     state.reset()
 
 
+# ── V0.6.83.1 (Round-3 CI hotfix): per-test top-level widget cleanup ─────────
+# The Qt-enabled CI run (run 226) exposed the second order-dependent crash
+# the V0.6.83 release notes documented but never repaired: the behavioural
+# dialog tests (TtsServiceDialog and every other BaseServiceDialog driver)
+# create top-level dialogs that are never closed or deleted — the dialog's
+# Python name simply goes out of scope while the C++ QWidget lives on under
+# the QApplication. At interpreter shutdown Shiboken then destroys those
+# widgets around/after the QApplication itself — the classic PySide6
+# use-after-free (reproduced standalone: TestTtsServiceDialogWorkerDrive
+# alone → 9 passed, then SIGSEGV; TestTtsServiceDialogProcessEngineMatrix
+# alone → same; the corrupted heap also detonated mid-suite at the podcast
+# e2e's ffmpeg fork, exit 139 with no summary, on the first Qt-enabled
+# full-suite run). close() alone does NOT free the C++ object — and close()
+# is also WRONG in teardown (the dialogs' closeEvent guards raise a modal
+# QMessageBox no headless run can answer). The fix is hide + deleteLater +
+# a DeferredDelete-ONLY event pass (a plain processEvents drain delivers
+# still-queued application events onto the half-torn-down dialog — the
+# third crash, SIGABRT inside image_extractor_dialog._on_done) after EVERY
+# test. The QApplication singleton itself
+# is deliberately kept (the suite's ``QApplication.instance() or
+# QApplication([])`` pattern depends on it); only the per-test widgets are
+# released. Pure tests pay one guarded import+instance check; Qt tests gain
+# the teardown hygiene pytest-qt's qtbot would otherwise provide.
+@pytest.fixture(autouse=True)
+def _dispose_qt_toplevel_widgets():
+    yield
+    try:
+        from PySide6.QtCore import QEvent
+        from PySide6.QtWidgets import QApplication
+
+        app = QApplication.instance()
+        if app is None:
+            return
+        for w in list(app.topLevelWidgets()):
+            # hide() not close(): close() runs closeEvent, and the dialog
+            # guards ("a background task is still running — close anyway?")
+            # raise a MODAL QMessageBox whose nested event loop nobody can
+            # click in a headless run — an instant suite hang. Teardown is
+            # mechanical: hide now, schedule the C++ deletion.
+            try:
+                w.hide()
+            except Exception:
+                pass
+            try:
+                w.deleteLater()
+            except Exception:
+                pass
+        # Process ONLY the deferred deletions — a plain processEvents()
+        # drain would also deliver still-queued APPLICATION events the
+        # finished test never wanted processed (a worker's finished signal
+        # landing on the half-torn-down dialog: _on_done shows a modal /
+        # touches dead children — the third shutdown-class crash, SIGABRT
+        # inside image_extractor_dialog._on_done during this very drain).
+        # The stale queued signals are then discarded with their object:
+        # QObject's destructor drops its pending events.
+        try:
+            app.sendPostedEvents(None, QEvent.DeferredDelete)
+        except Exception:
+            pass
+    except Exception:
+        # Never let cleanup break a test's own teardown.
+        pass
+
+
 @pytest.fixture
 def tmp_output_dir(tmp_path: Path) -> Path:
     """A temporary output directory for conversion tests."""

@@ -31,6 +31,86 @@
 >    information invented; the commits remain the authoritative record.
 
 
+## V0.6.83.1 — post-release CI hotfix: the Qt-enabled Test job no longer dies mid-suite — BOTH order-dependent crashes repaired (the m1 icon test's QGuiApplication was process-poison for every later widget test; the dialog tests' never-deleted top-level widgets segfaulted the interpreter at shutdown / the podcast e2e's ffmpeg fork), and the post-tag Qt-libs CI enablement is documented
+
+**Context (the post-tag `1a4a6dc`, previously documented only in its commit
+message):** the CI Test job now installs the Qt runtime libs
+(`libegl1 libgl1 libxkbcommon0 libdbus-1-3 libxcb-cursor0`), so the
+PySide6-importing tests — the ~90 that ImportError'd on every run since the
+V0.6.82 era, environment failures never code regressions — finally RUN on
+CI. That enablement unmasked a latent, order-dependent suite defect this
+hotfix repairs (test-only; zero application code changed, the shipped
+0.6.83 binary is untouched — the V0.6.74 no-tag precedent applies).
+
+**The crash №1 (SIGABRT at 47%, exit 134):** the first Qt-enabled run
+(run 226 on `1a4a6dc`) died mid-`tests/test_v00420_crashfixes.py::
+test_icon_is_horizontally_centered` with `Fatal Python error: Aborted` —
+the whole pytest process killed, no summary line ever printed.
+
+**Root cause 1 (bisected to a 3-file reproducer, `test_m1_theme_tokens +
+test_m2_dashboard + test_v00420`, then minimized to a standalone script):**
+`test_m1_theme_tokens.py::TestQtBehaviour::test_icon_home_renders_non_null`
+created a **`QGuiApplication`** — not a `QApplication` — and shiboken keeps
+the app singleton alive for the rest of the process. Every later behavioural
+test's `QApplication.instance() or QApplication([])` then short-circuits on
+that wrong-typed instance (it is truthy), so no real QApplication ever
+exists, and the first `QWidget()` hits Qt's qFatal *"QWidget: Cannot create
+a QWidget without QApplication"* → SIGABRT. The intervening `test_m2`
+(hermetic AST parsing, no Qt) only changes the GC/allocation timing, which
+is why the crash looked flaky in small slices yet fired 4/4 on the full
+suite — locally and on CI, byte-identical stack.
+
+**Fix 1:** that one test now creates a **`QApplication`** (a subclass —
+icon/`QPixmap` rendering is identical) via the same offscreen argv, keeping
+the process un-poisoned for every widget test that follows (`test_v00420`,
+`test_v0683`, …). The class's availability guard checks `PySide6.QtWidgets`
+(what `theme.py` itself imports — the guard's QtGui check was the other
+face of the same blind spot).
+
+**The crash №2 (SIGSEGV, exit 139):** with crash 1 repaired, the full
+suite ran on — and died again at 61%, this time a segmentation fault inside
+the podcast e2e's real-ffmpeg `subprocess` fork, again with no summary. The
+release notes had documented "the two order-dependent Qt aborts" as
+pre-existing; the Qt-enabled CI run made both of them fatal.
+
+**Root cause 2 (isolated to standalone class runs, no fork needed):** the
+behavioural dialog tests (`TestTtsServiceDialogWorkerDrive`,
+`TestTtsServiceDialogProcessEngineMatrix` — and the same pattern in every
+other BaseServiceDialog-driving e2e) create top-level dialogs that are
+never closed or deleted — the Python name goes out of scope while the C++
+QWidget lives on under the QApplication. At interpreter shutdown Shiboken
+then destroys those widgets around/after the QApplication itself — the
+classic PySide6 use-after-free. Reproduced deterministically: each class
+ALONE passes all its tests and then segfaults at exit; the corrupted heap
+also detonates at later forks (the 61% crash — `close()` alone is NOT
+enough, and close() is also WRONG here: the dialogs' closeEvent guards
+raise a modal "a background task is still running" QMessageBox no headless
+run can answer — teardown must `hide()` + `deleteLater()` and drain the
+loop).
+
+**Fix 2:** a new suite-wide autouse fixture in `tests/conftest.py`
+(`_dispose_qt_toplevel_widgets`) — after EVERY test, when a QApplication
+exists, hide + `deleteLater` every top-level widget and drain the event
+loop. The QApplication singleton is deliberately kept (the suite's
+`instance() or QApplication([])` pattern depends on it); pure tests pay one
+guarded check. This is the teardown hygiene pytest-qt's qtbot would
+otherwise provide, in the same conftest tradition as the tiktoken/
+markitdown gates and the runtime-state reset.
+
+**Verification:** both standalone class runs that segfaulted 100% now exit
+clean; the 3-file SIGABRT reproducer and the 144-file CI-order slice that
+aborted 4/4 before run to completion; and the full suite with Qt enabled
+(the CI condition) runs to completion with zero aborts — the failure set
+is exactly the documented pre-existing CI baseline (`c0a87ca`'s run:
+golden-freeze manifest drift, eval-gate baseline drift, the optional-extra
+TTS/ebooklib tests, the rig-only transcribe/podcast e2e set, the
+V0.6.74-documented 15-file ruff-format M4 deferral in the Lint job, and
+the gated pip-audit job) — no NEW failure IDs, and the previously-crashing
+`test_v00420` + Round-3 `test_v0683` Qt tests green. `ruff check` clean on
+both touched files (m1's 4 pre-existing format-drift spots are the
+documented M4 set, untouched; conftest formatted clean).
+
+
 ## V0.6.83 — UI/UX correction Round 3: the properly sized window (1440×900 first-run target, the screen-derived 1100×720 minimum, implausibly-small restores clamped up), the responsive sidebar rail (clamp(180, 0.18·w, 260) with a compact profile and word-wrapped nav labels), the body-driven hero (~0.325 of the viewport, a fully scalable text rhythm, and the still-life as a TRUE transparent RGBA composite — the baked rectangle retired), and the tiered Quick Tools reflow (measured single-line comfort gate above the readability floor)
 
 The Round-3 correction spec (`ELIXIR_UI_UX_CORRECTION_ROUND_3.md`) measured

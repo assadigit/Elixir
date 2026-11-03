@@ -433,13 +433,13 @@ class TestM2Primitives:
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# Qt behaviour (runs where PySide6.QtGui imports — skips in the libEGL sandbox)
+# Qt behaviour (runs where PySide6.QtWidgets imports — skips in the libEGL sandbox)
 # ════════════════════════════════════════════════════════════════════════════
 
 
 def _qt_gui_available() -> bool:
     try:
-        import PySide6.QtGui  # noqa: F401
+        import PySide6.QtWidgets  # noqa: F401  (theme.py itself imports QtWidgets)
 
         return True
     except Exception:
@@ -449,9 +449,10 @@ def _qt_gui_available() -> bool:
 _QT_GUI = _qt_gui_available()
 
 
-@pytest.mark.skipif(not _QT_GUI, reason="PySide6.QtGui unavailable (headless sandbox: libEGL)")
+@pytest.mark.skipif(not _QT_GUI, reason="PySide6.QtWidgets unavailable (headless sandbox: libEGL)")
 class TestQtBehaviour:
-    """Real-import behaviour pins (the user's Windows machine runs these)."""
+    """Real-import behaviour pins (the user's Windows machine runs these;
+    CI runs them too since the V0.6.83 Qt-libs install)."""
 
     def test_qss_compiles_with_spec_accents(self):
         from ui_qt.theme import DARK, LIGHT, _qss
@@ -495,10 +496,20 @@ class TestQtBehaviour:
     def test_icon_home_renders_non_null(self):
         import os
 
+        # V0.6.83 hotfix: the QGuiApplication here was process-poison — a
+        # QGuiApplication singleton (which shiboken keeps alive for the
+        # rest of the pytest process) makes every LATER behavioural test's
+        # ``QApplication.instance() or QApplication([])`` short-circuit on
+        # the wrong-typed instance, so the first ``QWidget()`` hit Qt's
+        # qFatal "Cannot create a QWidget without QApplication" and killed
+        # the whole suite with SIGABRT (the first V0.6.83 CI run, 47% in).
+        # A QApplication IS a QGuiApplication (icon/QPixmap rendering is
+        # identical) and it keeps the process un-poisoned for the widget
+        # tests that follow (test_v00420, test_v0683, ...).
         os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-        from PySide6.QtGui import QGuiApplication
+        from PySide6.QtWidgets import QApplication
 
-        _app = QGuiApplication.instance() or QGuiApplication(["-platform", "offscreen"])  # noqa: F841
+        _app = QApplication.instance() or QApplication(["-platform", "offscreen"])  # noqa: F841
         from ui_qt.components.icons import icon
 
         for name in ("home", "headphones", "audio-lines"):
