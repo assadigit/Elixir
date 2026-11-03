@@ -16,6 +16,21 @@ approved dashboard reference (1536×1024) —
   • the tagline card (leaf + "Knowledge, distilled into clarity." over
     the muted landscape artwork) anchored at the bottom.
 
+V0.6.84 (Round-4 §3.3/§4, compact density): the rail is restructured
+into the spec's three regions — (1) a scroll-free PRIMARY navigation
+area at the reference viewport (the brand row + Home + the nine tools:
+32 px rows, tight group rhythm), (2) a FIXED lower navigation region
+pinned BELOW the scroll area (the divider + Settings + About — always
+visible, never pushed out of view), and (3) the compact tagline card
+at the bottom (~40 px art band, the full brand line readable at the
+13 px sidebar scale). The V0.6.77–83 layout carried the footer items
+INSIDE the scroll area and the V0.6.82 reference rhythm (37 px rows,
+the 22+28 brand insets, the 125 px tagline card) — which at the user's
+real ~1096×717 window needed 834 px of rail against 675 available:
+the internal scrollbar, the clipped last tool, and the clipped tagline
+the Round-4 audit flags. The compact rhythm fits the same window in
+~615 px with no scrollbar.
+
 The AUDIO group (TTS / Podcast Maker / Transcribe) left the primary
 navigation — the reference rail carries only the nine core tools. The
 tools themselves are untouched: they stay reachable via the Quick Tools
@@ -131,7 +146,10 @@ def nav_keys() -> list[str]:
 
 # Below this rail height the brand card hides (spec §7 narrow-width rule:
 # a 560×400 window keeps the nav + footer, drops the decorative moment).
-_BRAND_MIN_RAIL_H = 520
+# V0.6.84 (Round-4 §3.3): the compact rail fits the full structure in
+# ~615 px; below this floor the decorative tagline card yields first
+# (the primary nav + the pinned footer keep their space).
+_BRAND_MIN_RAIL_H = 560
 
 
 class SidebarBrandCard(QFrame):
@@ -154,18 +172,15 @@ class SidebarBrandCard(QFrame):
         self._pm_key: tuple | None = None
 
         root = QVBoxLayout(self)
-        # V0.6.82 (Round-2 correction): the reference's brand card is ~125 px
-        # ([807..932]) with the tagline text ink at [829..869] and the art
-        # band's ink in the lower [901..932] — top inset 22, strip 64.
-        root.setContentsMargins(0, 22, 0, 0)
+        root.setContentsMargins(0, 12, 0, 0)
         root.setSpacing(0)
 
         # ── leaf glyph + the two-line brand text ──────────────────────
         row = QHBoxLayout()
-        row.setContentsMargins(14, 0, 14, 0)
-        row.setSpacing(8)
+        row.setContentsMargins(12, 0, 12, 0)
+        row.setSpacing(7)
         self._leaf = QLabel()
-        self._leaf.setFixedSize(16, 16)
+        self._leaf.setFixedSize(14, 14)
         row.addWidget(self._leaf, 0, Qt.AlignmentFlag.AlignTop)
 
         text = QVBoxLayout()
@@ -188,7 +203,7 @@ class SidebarBrandCard(QFrame):
         self._art = QLabel()
         self._art.setAlignment(Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignHCenter)
         art_wrap = QVBoxLayout()
-        art_wrap.setContentsMargins(0, 8, 0, 0)
+        art_wrap.setContentsMargins(0, 6, 0, 0)
         art_wrap.addWidget(self._art)
         root.addLayout(art_wrap)
 
@@ -203,17 +218,26 @@ class SidebarBrandCard(QFrame):
         self._apply_text_style()
 
     def _apply_text_style(self) -> None:
-        """Glyph tint + the secondary line colour (token-driven)."""
+        """Glyph tint + the two brand lines (token-driven).
+
+        V0.6.84 (Round-4 §4): both lines word-wrap — the full brand line
+        "Knowledge, distilled into clarity." stays visible at EVERY rail
+        width (the wide rail keeps the reference's two-line break; the
+        compact rail adds a third line rather than clipping — the exact
+        defect the audit's "text clipped" row flags).
+        """
         from ui_qt.theme import FONT, WEIGHT
 
         p = theme_manager.palette
-        self._leaf.setPixmap(icon("leaf", p.sage, 16).pixmap(16, 16))
+        self._leaf.setPixmap(icon("leaf", p.sage, 14).pixmap(14, 14))
+        self._line1.setWordWrap(True)
+        self._line2.setWordWrap(True)
         self._line2.setStyleSheet(
             f"font-size: {FONT.sidebar}px; font-weight: {WEIGHT.regular};"
             f"color: {p.text_secondary}; background: transparent;"
         )
         self._line1.setStyleSheet(
-            f"font-size: {FONT.tool}px; font-weight: {WEIGHT.semibold};"
+            f"font-size: {FONT.sidebar}px; font-weight: {WEIGHT.semibold};"
             f"color: {p.sage}; background: transparent;"
         )
 
@@ -261,8 +285,12 @@ class SidebarBrandCard(QFrame):
         # Keep the strip compact (V0.6.77: the reference card's art band
         # is ~50 px of the ~126 px card): crop from the TOP (the fade
         # erases the crop line) so the hills' lower band fills the strip.
-        # V0.6.82: 64 — the card totals ≈125 px with the 22 px top inset.
-        strip_h = min(scaled_h, 64)
+        # V0.6.84 (Round-4 §4): 38 — the card lands ≈100 px with the 12 px
+        # top inset (the V0.6.82 64 px strip was two-thirds of the card's
+        # blank-heavy 125 px — the audit's "too tall for its content")
+        # while the full three-line rail budget still closes at the
+        # user's 633 px rail (58 brand + 370 nav + 78 lower + ~120 card).
+        strip_h = min(scaled_h, 38)
         flat = QImage(w, strip_h, QImage.Format.Format_ARGB32_Premultiplied)
         flat.fill(QColor(p.bg_surface))
         painter = QPainter(flat)
@@ -349,20 +377,17 @@ class Sidebar(QFrame):
 
         # ── the brand row (V0.6.77: the reference's leaf + wordmark,
         #    moved out of the top bar into the rail) ──────────────────
-        # V0.6.82 (Round-2 correction, ink-calibrated): the reference's
-        # leaf mark is LARGE (ink 40×46 at x[51..91]) while its wordmark
-        # is SMALLER than V0.6.76 had it (ink 67 px wide vs 101 at 44 px →
-        # brand=30). Margins/spacing place the leaf ink at x≈51 (was ≈42)
-        # with the row's ink starting at y≈52 (was 61).
+        # V0.6.84 (Round-4 §3.2, compact density): the reference rhythm
+        # (48 px leaf, 24+28 insets) consumed 100 px of rail; the compact
+        # row (32 px leaf, 14+12 insets) takes ~58 — part of how the full
+        # nav fits the user's ~633 px rail without a scrollbar.
         brand_row = QWidget()
         bl = QHBoxLayout(brand_row)
-        # V0.6.82: bottom 28 — the Home pill lands at y≈130 (reference
-        # [128..172]) with the shorter 30 px wordmark.
-        bl.setContentsMargins(26, 24, 16, 28)
-        bl.setSpacing(16)
+        bl.setContentsMargins(20, 14, 12, 12)
+        bl.setSpacing(10)
         self._brand_row_lay = bl
         self._brand_leaf = QLabel()
-        self._brand_leaf.setFixedSize(48, 48)
+        self._brand_leaf.setFixedSize(32, 32)
         bl.addWidget(self._brand_leaf, 0, Qt.AlignmentFlag.AlignVCenter)
         self._brand_word = QLabel("Elixir")
         self._brand_word.setObjectName("BrandWord")
@@ -370,38 +395,29 @@ class Sidebar(QFrame):
         bl.addStretch(1)
         root.addWidget(brand_row)
 
-        # ── scrollable grouped nav ────────────────────────────────────
+        # ── Region 1 (Round-4 §3.3): the scrollable PRIMARY navigation ─
+        # Brand row + Home + the TOOLS group. At the reference viewport
+        # this region is scroll-free (the compact rhythm fits ~615 px of
+        # rail); below it the area scrolls deliberately (spec §3.3:
+        # "allow a deliberate sidebar scrolling mode rather than clipping
+        # controls") while Regions 2+3 stay pinned.
         nav_host = QWidget()
         nav = QVBoxLayout(nav_host)
-        nav.setContentsMargins(16, 2, 16, 6)
+        nav.setContentsMargins(14, 2, 14, 6)
         nav.setSpacing(1)
         self._nav_host_lay = nav
         for group_label, items in NAV_GROUPS:
             if group_label is not None:
-                nav.addSpacing(32)
-                nav.addWidget(SectionLabel(group_label))
+                # V0.6.84 (Round-4 §3.1): the reference's group rhythm at
+                # the compact density — 12 px above the label, 6 below.
                 nav.addSpacing(12)
+                nav.addWidget(SectionLabel(group_label))
+                nav.addSpacing(6)
             for key, icon_name, label in items:
-                # V0.6.79: Home — the reference's roomier 44 px selected pill.
                 item = SidebarNavItem(icon_name, label, tall=(key == "home"))
                 item.clicked.connect(lambda k=key: self.navigate.emit(k))
                 self._items[key] = item
                 nav.addWidget(item)
-        # V0.6.79: the reference's divider + Settings/About sit a fixed
-        # distance below the LAST TOOL (not bottom-pinned) — the tagline
-        # card below owns the bottom anchoring. V0.6.82 (ink-calibrated):
-        # divider at y≈612 and Settings ink at y≈652 in the reference
-        # (last-tool ink ends 565) — the spacings retune 50/36 → 32/34.
-        nav.addSpacing(32)
-        divider = QFrame()
-        divider.setObjectName("Divider")
-        nav.addWidget(divider)
-        nav.addSpacing(34)
-        for key, icon_name, label in NAV_FOOTER:
-            item = SidebarNavItem(icon_name, label)
-            item.clicked.connect(lambda k=key: self.navigate.emit(k))
-            self._items[key] = item
-            nav.addWidget(item)
         nav.addStretch()
 
         scroll = QScrollArea()
@@ -417,12 +433,33 @@ class Sidebar(QFrame):
         scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         root.addWidget(scroll, 1)
 
-        # ── the brand moment (approved reference, sidebar bottom) ─────
-        # M3 asset audit: hills panorama + leaf + the brand line.  Lives
-        # BELOW the pinned footer exactly as in the approved dashboard
-        # reference; hides on short rails (see resizeEvent).
+        # ── Region 2 (Round-4 §3.3): the FIXED lower navigation ────────
+        # The divider + Settings/About, pinned BELOW the scroll area so
+        # the primary tools can never push them out of view (the V0.6.77-83
+        # layout carried them inside the scrollable column — at the user's
+        # real window the nine tools filled the viewport and the footer
+        # vanished below the fold). Spec §3.1: "Settings and About in a
+        # fixed lower navigation region".
+        lower = QWidget()
+        lower_lay = QVBoxLayout(lower)
+        lower_lay.setContentsMargins(14, 4, 14, 2)
+        lower_lay.setSpacing(1)
+        divider = QFrame()
+        divider.setObjectName("Divider")
+        lower_lay.addWidget(divider)
+        lower_lay.addSpacing(6)
+        for key, icon_name, label in NAV_FOOTER:
+            item = SidebarNavItem(icon_name, label)
+            item.clicked.connect(lambda k=key: self.navigate.emit(k))
+            self._items[key] = item
+            lower_lay.addWidget(item)
+        root.addWidget(lower)
+
+        # ── Region 3 (Round-4 §3.3/§4): the compact tagline card ───────
+        # M3 asset audit: hills panorama + leaf + the brand line. Pinned
+        # at the rail's bottom; hides on short rails (see resizeEvent).
         brand_wrap = QVBoxLayout()
-        brand_wrap.setContentsMargins(16, 8, 16, 12)
+        brand_wrap.setContentsMargins(14, 6, 14, 8)
         self._brand = SidebarBrandCard()
         brand_wrap.addWidget(self._brand)
         root.addLayout(brand_wrap)
@@ -455,33 +492,33 @@ class Sidebar(QFrame):
         """Re-tune the rail's fixed insets for the active profile (the
         fluid parts — nav list, brand card — reflow on their own).
 
-        Wide (≥ RAIL_COMPACT_BELOW): the V0.6.82 reference calibration.
-        Compact: the Round-3 narrow-rail adaptation — a tighter brand row
-        (36 px leaf, 24 px wordmark) and tighter nav insets; the nav LABELS
-        word-wrap to two lines (never clipped, never shrunk), so a 180 px
-        rail still reads.
+        Wide (≥ RAIL_COMPACT_BELOW): the Round-4 compact calibration.
+        Compact: the narrow-rail adaptation — a tighter brand row
+        (28 px leaf, 22 px wordmark) and tighter nav insets; the nav
+        LABELS word-wrap to two lines (never clipped, never shrunk), so
+        a 180 px rail still reads.
         """
         from ui_qt.theme import WEIGHT
 
         compact = self._compact
         # ── the brand row ─────────────────────────────────────────────
-        self._brand_row_lay.setContentsMargins(*(18, 22, 12, 24) if compact else (26, 24, 16, 28))
-        self._brand_row_lay.setSpacing(12 if compact else 16)
-        leaf_px = 36 if compact else 48
-        glyph_px = 34 if compact else 44
+        self._brand_row_lay.setContentsMargins(*(16, 12, 10, 10) if compact else (20, 14, 12, 12))
+        self._brand_row_lay.setSpacing(8 if compact else 10)
+        leaf_px = 26 if compact else 32
+        glyph_px = 24 if compact else 28
         self._brand_leaf.setFixedSize(leaf_px, leaf_px)
         p = theme_manager.palette
         self._brand_leaf.setPixmap(icon("leaf", p.accent, glyph_px).pixmap(glyph_px, glyph_px))
         if compact:
             self._brand_word.setStyleSheet(
-                f"font-size: 24px; font-weight: {WEIGHT.semibold};"
+                f"font-size: 20px; font-weight: {WEIGHT.semibold};"
                 f"color: {p.text_primary}; letter-spacing: 0.2px;"
                 "background: transparent;"
             )
         else:
             self._brand_word.setStyleSheet("background: transparent;")
         # ── the nav host + items ───────────────────────────────────────
-        self._nav_host_lay.setContentsMargins(*(12, 2, 12, 6) if compact else (16, 2, 16, 6))
+        self._nav_host_lay.setContentsMargins(*(11, 2, 11, 6) if compact else (14, 2, 14, 6))
         for item in self._items.values():
             item.set_compact(compact)
 
@@ -501,11 +538,11 @@ class Sidebar(QFrame):
 
     # ── theme ───────────────────────────────────────────────────────────
     def _apply_brand_tints(self) -> None:
-        """The brand row's leaf tint (token-driven). V0.6.82: the glyph
-        renders at 44 px inside its 48 px box (the reference's leaf ink is
-        40×46 — a large mark against the now-smaller wordmark)."""
+        """The brand row's leaf tint (token-driven). V0.6.84 (Round-4
+        compact): the glyph renders at 28 px inside its 32 px box (the
+        V0.6.82 44 px mark was calibrated against the 1536 reference)."""
         p = theme_manager.palette
-        self._brand_leaf.setPixmap(icon("leaf", p.accent, 44).pixmap(44, 44))
+        self._brand_leaf.setPixmap(icon("leaf", p.accent, 28).pixmap(28, 28))
 
     def refresh_theme(self) -> None:
         """Re-apply theme-dependent styles (theme toggle hook)."""

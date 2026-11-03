@@ -4,9 +4,13 @@ M1 of the approved UI/UX redesign.  Design language:
   - Warm ivory / charcoal neutrals (never pure black) + a single muted
     **forest-green** accent with sage support — paper, ink, and a quiet
     reading room (per ELIXIR_FINAL_DASHBOARD_DESIGN_SPEC §3).
-  - **Inter** as the primary typeface — bundled in ``assets/fonts/`` since M1
-    (4 static weights, OFL), falling back to the best Windows-native stack
-    (Segoe UI Variable → Segoe UI).
+  - **IBM Plex Sans** as the primary typeface — bundled in
+    ``assets/fonts/`` since V0.6.84 (4 static weights, OFL), selected over
+    Manrope by the Round-4 in-app comparison (spec §6.3: both candidates
+    rendered in the real dashboard at the compact and reference sizes;
+    see ``assets/fonts/README.md`` for the recorded decision), replacing
+    Inter, falling back to the best Windows-native stack (Segoe UI
+    Variable → Segoe UI).
   - A single source of truth: the ``SPACE`` / ``FONT`` / ``RADIUS`` / ``WEIGHT``
     token scales.  Views import these instead of hard-coding magic numbers so
     the whole app stays visually consistent.
@@ -17,7 +21,7 @@ M1 of the approved UI/UX redesign.  Design language:
 
 The ThemeManager owns the palette, generates the complete QSS for the active
 mode (dark/light), persists the choice to
-``~/.elixir/ui_theme.json``, loads any bundled Inter weights, and
+``~/.elixir/ui_theme.json``, loads any bundled primary weights, and
 applies everything to a QApplication.
 """
 
@@ -64,10 +68,15 @@ SPACE = _ns(
 )
 
 # Font sizes (px).  Two scales, deliberately (user decision Q6):
-#   • Dialog scale (unchanged, compact): Inter renders crisply at 11px;
-#     Segoe UI fallback is fine too.  Wizard/settings/dialogs keep this.
-#   • Dashboard scale (M1 additions, spec §4): hero/section/tool/sidebar/
-#     body_lg feed the M2 hero, sidebar, and quick-tool grid.
+#   • Dialog scale (unchanged, compact): the primary face renders crisply
+#     at 11px; Segoe UI fallback is fine too.  Wizard/settings/dialogs keep
+#     this.  V0.6.84: the two share ONE family (the Round-4 spec §6.2
+#     "one primary type family consistently" — Inter's separate dialog/
+#     dashboard pairing is retired with Inter itself).
+#   • Dashboard scale: the Round-4 COMPACT density (spec §2.2 — the cards,
+#     sidebar rows, and chrome bands re-measured for the user's actual
+#     ~1100×720 desktop band, not the 1536-wide mockup canvas: card titles
+#     14, descriptions 11.5, nav labels 13).
 FONT = _ns(
     micro=9,  # badges, counters — use rarely
     caption=10,  # hints, secondary captions
@@ -78,29 +87,23 @@ FONT = _ns(
     h2=15,  # page titles
     h1=18,  # hero / dialog titles
     display=22,  # splash / numbers
-    # ── M1 dashboard-facing additions (spec §4 ranges) ──────────────────
-    # V0.6.82 (Round-2 correction): re-measured against the approved
-    # reference with ink-bbox calibration (glyph ink extents of the SAME
-    # strings rendered side by side) — the V0.6.76 estimates read the
-    # AI-generated reference's soft antialiasing as smaller glyphs than it
-    # actually paints. Calibrated ratios vs the V0.6.76 values: card title
-    # ink 119px vs 105 (×1.13), section head 17 vs 15, nav labels 103 vs 94
-    # (×1.10), TOOLS label 48 vs 35 (×1.37); the brand wordmark was
-    # OVER-sized (ink 101px vs the reference's 67 → 44 → 30) while the leaf
-    # mark was under-sized (ink 23 vs 40 → glyph 26 → 44).
-    eyebrow=14,  # hero eyebrow (tracked uppercase; measured ink 11px both)
-    # V0.6.82 width-calibrated: the reference's support line inks are
-    # 495 px (L1) / 265 px (L2); Inter advances 597/335 at 22 px → the
-    # reference's effective size is ≈18 (the V0.6.76 "ascender 17px"
-    # reading was AA-inflated ink height, not glyph size).
-    body_lg=18,  # dashboard body / hero support copy
-    tool=17,  # quick-tool card titles (reference ink 119px vs 105 at 15px)
-    tool_desc=13,  # quick-tool card descriptions (reference ink ×1.13)
-    sidebar=14.5,  # sidebar nav labels (reference ink 103px vs 94 at 13px)
-    group=13,  # the sidebar's TOOLS label (reference ink 48px vs 35 at 10px)
-    section=20,  # "Quick Tools" — reference ink 126px ≈ the 20px render's 129
-    hero=41,  # hero heading (reference ascender ~30px, 2×46px lines)
-    brand=30,  # sidebar "Elixir" wordmark (reference ink 67px vs 101 at 44px)
+    # ── dashboard-facing (Round-4 compact density, spec §2.2/§6.2) ──────
+    # V0.6.84: the V0.6.82 ink-calibrated values were measured against the
+    # 1536×1024 reference canvas at 1:1; the user's real window runs at
+    # ~72% of that scale, where those sizes forced the two-column grid,
+    # the scrolling sidebar, and the clipped tagline the Round-4 audit
+    # flags. The compact values hold the reference's PROPORTIONS at the
+    # real desktop band while every size stays at or above the dialog
+    # scale's legibility floor (11px body).
+    eyebrow=14,  # hero eyebrow (tracked uppercase; scales with the hero)
+    body_lg=18,  # dashboard body / hero support copy (scales with the hero)
+    tool=14,  # quick-tool card titles (compact: single-line at ≥150px cols)
+    tool_desc=11.5,  # quick-tool card descriptions (dialog-body legibility)
+    sidebar=13,  # sidebar nav labels (compact rows; ~0.9× the V0.6.82 ink)
+    group=11,  # the sidebar's TOOLS label
+    section=18,  # "Quick Tools" heading (compact band)
+    hero=41,  # hero heading (the per-widget scaler owns the live size)
+    brand=26,  # sidebar "Elixir" wordmark (compact brand row)
 )
 
 # Font weights (Inter ships these; Segoe UI maps 500/600→SemiBold reasonably)
@@ -115,9 +118,16 @@ RADIUS = _ns(xs=3, sm=5, md=6, lg=8, xl=10, nav=10, card=14, hero=16, shell=18)
 # Centralised here (M1) so views carry zero hardcoded colours.
 CODE_EDITOR = _ns(bg="#1E1E1E", text="#D4D4D4", border="#3C3C3C")
 
-# The canonical font-family stack.  Inter first (if loaded), then the best
-# Windows-native face, then cross-platform fallbacks.  Monospace for logs.
-FONT_FAMILY = '"Inter", "Segoe UI Variable", "Segoe UI", "Helvetica Neue", Arial, sans-serif'
+# The canonical font-family stack.  The bundled primary face first (if
+# loaded), then the best Windows-native face, then cross-platform
+# fallbacks.  Monospace for logs.
+# V0.6.84 (Round-4 §6): "IBM Plex Sans" replaces "Inter" — selected by
+# the side-by-side dashboard comparison (spec §6.3) and registered by
+# load_primary_fonts(); Manrope (the evaluated first candidate) is
+# documented in assets/fonts/README.md.  Segoe UI stays the fallback.
+FONT_FAMILY = (
+    '"IBM Plex Sans", "Segoe UI Variable", "Segoe UI", "Helvetica Neue", Arial, sans-serif'
+)
 FONT_FAMILY_MONO = '"JetBrains Mono", "Cascadia Code", "Consolas", "Menlo", monospace'
 
 
@@ -258,19 +268,23 @@ def rgba(hex_color: str, alpha: float) -> str:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Inter font loading
+# Primary font loading (V0.6.84, Round-4 §6)
 # ─────────────────────────────────────────────────────────────────────────────
 
-_INTER_FILES = (
-    "Inter-Regular.ttf",
-    "Inter-Medium.ttf",
-    "Inter-SemiBold.ttf",
-    "Inter-Bold.ttf",
+# The bundled static weights of the primary dashboard typeface.  IBM
+# Plex Sans's four production weights (static instances of the Google
+# Fonts variable face, OFL 1.1 — see assets/fonts/README.md for
+# provenance + the Round-4 comparison record).
+_PRIMARY_FILES = (
+    "IBMPlexSans-Regular.ttf",
+    "IBMPlexSans-Medium.ttf",
+    "IBMPlexSans-SemiBold.ttf",
+    "IBMPlexSans-Bold.ttf",
 )
 
 
-def load_inter(app: QApplication) -> list[str]:
-    """Register bundled Inter weights from ``assets/fonts/`` if present.
+def load_primary_fonts(app: QApplication) -> list[str]:
+    """Register the bundled primary weights from ``assets/fonts/`` if present.
 
     Returns the list of family names that were successfully added (may be
     empty if the font files aren't installed yet — the stylesheet then
@@ -281,10 +295,12 @@ def load_inter(app: QApplication) -> list[str]:
     asset, the prompts) — instead of ``Path(__file__).parent.parent``. From
     source both resolve to the repository root, but in a frozen
     PyInstaller build the module path is synthesized and the bundle root
-    is the ONLY reliable anchor: if Inter silently fails to register, the
-    QSS stack falls back to Segoe UI, whose wider metrics overflow the
-    dashboard's fixed reflow thresholds (the compiled-Windows "not enough
-    space" reports).
+    is the ONLY reliable anchor: if the primary face silently fails to
+    register, the QSS stack falls back to Segoe UI, whose wider metrics
+    overflow the dashboard's fixed reflow thresholds (the compiled-Windows
+    "not enough space" reports).
+    V0.6.84 (Round-4 §6.1): renamed from ``load_inter`` as the primary face
+    becomes Manrope — same registration contract, new file list.
     """
     from app_paths import bundle_dir
 
@@ -292,7 +308,7 @@ def load_inter(app: QApplication) -> list[str]:
     families: list[str] = []
     if not fonts_dir.is_dir():
         return families
-    for name in _INTER_FILES:
+    for name in _PRIMARY_FILES:
         fp = fonts_dir / name
         if fp.exists() and fp.stat().st_size > 1000:
             fid = QFontDatabase.addApplicationFont(str(fp))
@@ -1149,8 +1165,8 @@ def _qss(p: Palette) -> str:
 class ThemeManager:
     """Owns the active palette, generates QSS, persists the user's choice.
 
-    V7.4.0: loads bundled Inter weights on first apply; the stylesheet falls
-    back to Segoe UI Variable / Segoe UI when Inter is absent.
+    V7.4.0: loads bundled primary weights on first apply; the stylesheet
+    falls back to Segoe UI Variable / Segoe UI when they are absent.
     """
 
     def __init__(self) -> None:
@@ -1162,7 +1178,7 @@ class ThemeManager:
         self.settings_file.parent.mkdir(parents=True, exist_ok=True)
         self._mode: str = self._load_mode()
         self._app: QApplication | None = None
-        self._inter_loaded: bool = False
+        self._primary_loaded: bool = False
 
     # ── persistence ──────────────────────────────────────────────────────
     def _load_mode(self) -> str:
@@ -1199,7 +1215,12 @@ class ThemeManager:
 
     @property
     def inter_loaded(self) -> bool:
-        return self._inter_loaded
+        """Back-compat alias: did the bundled primary typeface register?"""
+        return self._primary_loaded
+
+    @property
+    def primary_loaded(self) -> bool:
+        return self._primary_loaded
 
     # ── application ──────────────────────────────────────────────────────
     def apply(self, app: QApplication, mode: str | None = None) -> None:
@@ -1207,13 +1228,13 @@ class ThemeManager:
         self._app = app
         if mode is not None:
             self._mode = mode
-        # one-shot Inter registration
-        if not self._inter_loaded:
+        # one-shot primary-face registration (V0.6.84: IBM Plex Sans — was Inter)
+        if not self._primary_loaded:
             try:
-                fams = load_inter(app)
-                self._inter_loaded = bool(fams)
+                fams = load_primary_fonts(app)
+                self._primary_loaded = bool(fams)
             except Exception:
-                self._inter_loaded = False
+                self._primary_loaded = False
         p = self.palette
 
         pal = QPalette()

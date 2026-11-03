@@ -231,11 +231,14 @@ class ElixirWindow(QMainWindow):
         (the reference's leaf + wordmark row); the top bar's left ~60% is
         intentionally empty in the reference, with the controls clustered
         right: the backend status pill, the labelled Settings action, a
-        subtle divider, the theme toggle, then the frameless window
-        controls (min / max-restore / close). The old header brand +
-        subtitle, Merge link, LLM lights and about button are all retired
-        from this bar (Merge + the audio tools live on in About & System;
-        the pill summarises the lights; About sits in the sidebar).
+        subtle divider, then the frameless window controls (min /
+        max-restore / close). V0.6.84 (Round-4 §5): the theme toggle that
+        used to sit between the divider and the window controls is REMOVED
+        — the status strip's Light/Dark selector is the app's single
+        visible theme control. The old header brand + subtitle, Merge
+        link, LLM lights and about button are all retired from this bar
+        (Merge + the audio tools live on in About & System; the pill
+        summarises the lights; About sits in the sidebar).
 
         The empty bar area doubles as the window drag region (press to
         startSystemMove; double-click toggles maximise).
@@ -270,7 +273,7 @@ class ElixirWindow(QMainWindow):
         )
         self.backend_pill.clicked.connect(self._open_settings)
         lay.addWidget(self.backend_pill)
-        lay.addSpacing(28)
+        lay.addSpacing(24)
 
         # ── the labelled Settings action (gear + word) ────────────────
         self.settings_btn = QPushButton("Settings")
@@ -279,23 +282,21 @@ class ElixirWindow(QMainWindow):
         self.settings_btn.setToolTip("Open settings")
         self.settings_btn.clicked.connect(self._open_settings)
         lay.addWidget(self.settings_btn)
-        lay.addSpacing(22)
+        lay.addSpacing(20)
 
-        # ── the subtle divider ────────────────────────────────────────
+        # ── the subtle divider before the window controls ─────────────
+        # V0.6.84 (Round-4 §5): the top-bar MOON theme control is REMOVED —
+        # the status strip's Light/Dark selector is the single visible
+        # theme control (the spec's "Remove the top-bar moon theme control").
+        # The divider stays as the natural separator between the app
+        # controls and the frameless window controls; the spacing that the
+        # moon owned is folded into it ("redistribute remaining controls
+        # naturally; do not leave a conspicuous empty slot").
         divider = QFrame()
         divider.setObjectName("VDivider")
-        divider.setFixedHeight(36)
+        divider.setFixedHeight(32)
         lay.addWidget(divider)
-        lay.addSpacing(22)
-
-        # ── the theme toggle (moon in light, sun in dark) ─────────────
-        self.theme_btn = QPushButton()
-        self.theme_btn.setObjectName("IconBtn")
-        self.theme_btn.setCursor(Qt.PointingHandCursor)
-        self.theme_btn.setToolTip("Toggle dark / light theme")
-        self.theme_btn.clicked.connect(self._toggle_theme)
-        lay.addWidget(self.theme_btn)
-        lay.addSpacing(16)
+        lay.addSpacing(18)
 
         # ── the frameless window controls (V0.6.77) ───────────────────
         # Real controls, not decoration: min/max-restore/close with the
@@ -384,8 +385,8 @@ class ElixirWindow(QMainWindow):
 
     def _refresh_top_bar_icons(self) -> None:
         p = theme_manager.palette
-        # sun icon in dark mode (click → light), moon in light mode (click → dark)
-        self.theme_btn.setIcon(icon("sun" if p.is_dark else "moon", p.text_primary, 17))
+        # V0.6.84 (Round-4 §5): no top-bar theme glyph anymore — the status
+        # strip's sun/moon selector (StatusThemeBtn) is the one control.
         self.settings_btn.setIcon(icon("settings", p.text_secondary, 15))
         self.min_btn.setIcon(icon("minus", p.text_secondary, 15))
         self.max_btn.setIcon(

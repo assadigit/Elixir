@@ -23,7 +23,9 @@ tests/test_v182048_p6_icon_cache.py / test_v0669_local_llm_lights.py):
   6. Zero theme-dependent hex/rgba literals remain in ``ui_qt/`` outside
      ``theme.py`` (the icon-signature neutral fallbacks in ``icons.py`` are
      the documented exception).
-  7. Inter is bundled: 4 TTFs + OFL license in ``assets/fonts/``.
+  7. The primary typeface is bundled: IBM Plex Sans — 4 TTFs + OFL
+     license in ``assets/fonts/`` (V0.6.84, Round-4 §6: replaced Inter,
+     selected over Manrope by the in-app comparison).
   8. The M2 primitives exist and (since the M2 wiring commits) are
      composed ONLY by the M2 dashboard surfaces — the fixed sidebar
      (``sidebar.py``) and the home view (``home_view.py``).
@@ -153,11 +155,27 @@ class TestSpecPalettePins:
         """The pre-M1 21 fields survive untouched; ``icon``/``sage``/the
         V0.6.76 zone grounds are the additive extensions."""
         pre_m1_fields = {
-            "name", "is_dark", "bg_window", "bg_surface", "bg_elevated",
-            "bg_input", "bg_input_hover", "border", "border_strong",
-            "text_primary", "text_secondary", "text_muted", "text_on_accent",
-            "accent", "accent_hover", "accent_pressed", "accent_soft",
-            "success", "warning", "error", "info",
+            "name",
+            "is_dark",
+            "bg_window",
+            "bg_surface",
+            "bg_elevated",
+            "bg_input",
+            "bg_input_hover",
+            "border",
+            "border_strong",
+            "text_primary",
+            "text_secondary",
+            "text_muted",
+            "text_on_accent",
+            "accent",
+            "accent_hover",
+            "accent_pressed",
+            "accent_soft",
+            "success",
+            "warning",
+            "error",
+            "info",
         }
         for name in ("LIGHT", "DARK"):
             fields = set(_palette_kwargs(name))
@@ -215,26 +233,27 @@ class TestQssTemplatePins:
         assert font["display"] == 22
 
     def test_dashboard_type_scale_added(self):
-        """V0.6.82 (Round-2 correction): the dashboard scale is WIDTH-
-        CALIBRATED to the approved reference — same-string Inter advances
-        vs the reference's ink widths (widths are authoritative; ink
-        heights carry ±2 px of antialias spread): hero 41 (headline L2 ink
-        534 both), support 18 (L1 ink 495 = 597×18/22), section 20 ("Quick
-        Tools" ink 126 vs 129 at 20), tool 17 (ink 119 vs 105 at 15),
-        tool_desc 13, sidebar 14.5 (ink 103 vs 94 at 13), group 13 (TOOLS
-        ink 48 vs 35 at 10), eyebrow 14 (ink 145/150), brand 30 (ink 67 vs
-        101 at 44 — the wordmark was over-sized while the leaf mark was
-        under-sized)."""
+        """V0.6.84 (Round-4 §2.2/§6.2, compact density): the dashboard
+        scale is re-measured for the user's real ~1100×720 desktop band.
+        The V0.6.82 values were 1:1 ink calibrations against the
+        1536-wide reference canvas; at the user's ~72% scale they forced
+        the two-column grid, the scrolling sidebar, and the clipped
+        tagline the Round-4 audit flags. The compact values keep every
+        size at or above the dialog scale's 11 px legibility floor while
+        the card density band (home_view) scales titles/descriptions
+        13/11 → 17/13 with the body height (the reference render at wide
+        canvases). hero/eyebrow/body_lg stay — the per-widget hero
+        scaler owns their live sizes."""
         font = _ns_kwargs("FONT")
         assert font["hero"] == 41
-        assert font["section"] == 20
-        assert font["tool"] == 17
-        assert font["tool_desc"] == 13
-        assert font["sidebar"] == 14.5
-        assert font["group"] == 13
+        assert font["section"] == 18
+        assert font["tool"] == 14
+        assert font["tool_desc"] == 11.5
+        assert font["sidebar"] == 13
+        assert font["group"] == 11
         assert font["body_lg"] == 18
         assert font["eyebrow"] == 14
-        assert font["brand"] == 30
+        assert font["brand"] == 26
 
     def test_qss_has_dashboard_label_rules_and_hero_cta(self):
         code = _strip_comments(_src(_THEME))
@@ -253,12 +272,34 @@ class TestQssTemplatePins:
         """The old terracotta-amber family is fully retired."""
         code = _strip_comments(_src(_THEME))
         for old in (
-            "#191512", "#241E18", "#2E271F", "#15110D", "#1F1914", "#3A3128",
-            "#D4A574", "#F5EDE0", "#CBBFA9", "#8A7D6E", "#1A1612",
-            "#D8AA78", "#E6BC8A", "#C09060",
-            "#F7F3EC", "#F2EADF", "#FBF6EE", "#E6DECF", "#C8805A",
-            "#2A211B", "#6B5B4F", "#9A8B7D", "#B8704A", "#A6623E", "#8F5332",
-            "rgba(189, 102, 79", "rgba(216, 170, 120", "rgba(184, 112, 74",
+            "#191512",
+            "#241E18",
+            "#2E271F",
+            "#15110D",
+            "#1F1914",
+            "#3A3128",
+            "#D4A574",
+            "#F5EDE0",
+            "#CBBFA9",
+            "#8A7D6E",
+            "#1A1612",
+            "#D8AA78",
+            "#E6BC8A",
+            "#C09060",
+            "#F7F3EC",
+            "#F2EADF",
+            "#FBF6EE",
+            "#E6DECF",
+            "#C8805A",
+            "#2A211B",
+            "#6B5B4F",
+            "#9A8B7D",
+            "#B8704A",
+            "#A6623E",
+            "#8F5332",
+            "rgba(189, 102, 79",
+            "rgba(216, 170, 120",
+            "rgba(184, 112, 74",
         ):
             assert old not in code, f"terracotta remnant: {old}"
 
@@ -276,14 +317,54 @@ class TestQssTemplatePins:
 
 class TestIconPins:
     _PRE_M1_ICONS = {
-        "book", "newspaper", "file-text", "folder", "folder-open", "settings",
-        "sliders-horizontal", "sun", "moon", "chevron-down", "chevron-right",
-        "play", "flask", "x", "refresh", "search", "check", "scan", "layers",
-        "image", "table", "sigma", "layout", "cpu", "cloud", "sparkles",
-        "file-output", "scissors", "alert-triangle", "info", "shield",
-        "list-checks", "globe", "wand", "rocket", "save", "rotate-ccw", "eye",
-        "key", "languages", "mic", "plus", "copy", "trash", "pencil",
-        "message-square", "bookmark", "zap",
+        "book",
+        "newspaper",
+        "file-text",
+        "folder",
+        "folder-open",
+        "settings",
+        "sliders-horizontal",
+        "sun",
+        "moon",
+        "chevron-down",
+        "chevron-right",
+        "play",
+        "flask",
+        "x",
+        "refresh",
+        "search",
+        "check",
+        "scan",
+        "layers",
+        "image",
+        "table",
+        "sigma",
+        "layout",
+        "cpu",
+        "cloud",
+        "sparkles",
+        "file-output",
+        "scissors",
+        "alert-triangle",
+        "info",
+        "shield",
+        "list-checks",
+        "globe",
+        "wand",
+        "rocket",
+        "save",
+        "rotate-ccw",
+        "eye",
+        "key",
+        "languages",
+        "mic",
+        "plus",
+        "copy",
+        "trash",
+        "pencil",
+        "message-square",
+        "bookmark",
+        "zap",
     }
 
     def _icons_keys(self) -> set[str]:
@@ -350,9 +431,7 @@ class TestDeHardcodeCensus:
         highlight; documented M2 decision). What must survive: the
         ``_switch_to_tab`` public helper name + the window-side
         ``switch_to_page`` facade, and zero colour literals."""
-        code = _strip_comments(
-            _src(_project_root / "ui_qt" / "views" / "convert_view.py")
-        )
+        code = _strip_comments(_src(_project_root / "ui_qt" / "views" / "convert_view.py"))
         assert "def _switch_to_tab(self, tab_name: str) -> None:" in code
         assert "#D8AA78" not in code
         assert "QColor" not in code, "the tab-flash paint must not survive the facade"
@@ -362,35 +441,42 @@ class TestDeHardcodeCensus:
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# 7. Inter bundling (user decision Q4)
+# 7. Primary typeface bundling (user decision Q4; V0.6.84: IBM Plex Sans)
 # ════════════════════════════════════════════════════════════════════════════
 
 
-class TestInterBundling:
+class TestPrimaryFontBundling:
     def test_four_weights_and_license_bundled(self):
         fonts = _project_root / "assets" / "fonts"
         for name in (
-            "Inter-Regular.ttf",
-            "Inter-Medium.ttf",
-            "Inter-SemiBold.ttf",
-            "Inter-Bold.ttf",
+            "IBMPlexSans-Regular.ttf",
+            "IBMPlexSans-Medium.ttf",
+            "IBMPlexSans-SemiBold.ttf",
+            "IBMPlexSans-Bold.ttf",
         ):
             fp = fonts / name
             assert fp.exists() and fp.stat().st_size > 1000, f"{name} missing/too small"
-        license_file = fonts / "Inter-LICENSE.txt"
+        license_file = fonts / "IBMPlexSans-OFL.txt"
         assert license_file.exists()
         assert "Open Font License" in license_file.read_text(encoding="utf-8")
 
-    def test_load_inter_targets_these_files(self):
-        """load_inter() already registers exactly these four filenames."""
+    def test_load_primary_fonts_targets_these_files(self):
+        """load_primary_fonts() registers exactly these four filenames
+        (V0.6.84, Round-4 §6: the loader + file list replaced Inter's)."""
         code = _strip_comments(_src(_THEME))
         for name in (
-            "Inter-Regular.ttf",
-            "Inter-Medium.ttf",
-            "Inter-SemiBold.ttf",
-            "Inter-Bold.ttf",
+            "IBMPlexSans-Regular.ttf",
+            "IBMPlexSans-Medium.ttf",
+            "IBMPlexSans-SemiBold.ttf",
+            "IBMPlexSans-Bold.ttf",
         ):
             assert f'"{name}"' in code
+
+    def test_font_family_stack_leads_with_ibm_plex_sans(self):
+        """V0.6.84 (Round-4 §6.1): the QSS stack resolves the bundled
+        primary face first with the Segoe UI fallback behind it."""
+        code = _strip_comments(_src(_THEME))
+        assert '"IBM Plex Sans", "Segoe UI Variable", "Segoe UI"' in code
 
 
 # ════════════════════════════════════════════════════════════════════════════

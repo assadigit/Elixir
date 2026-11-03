@@ -20,6 +20,16 @@ four behaviors; every one is pinned here, pure-first (the house pattern):
    viewport) with a scalable text rhythm, and the hero still-life renders
    as a TRUE transparent RGBA pixmap (no flattened rectangle).
 
+V0.6.84 (Round-4, ELIXIR_UI_UX_CORRECTION_ROUND_4.md) supersedes parts of
+(3) and (4) — the compact-density re-measure for the user's real
+~1100×720 desktop band: nav rows 32 (was 37), the card floor 240 /
+compact chrome (was 272 / 144), the floor-driven three-column reflow
+(the single-line comfort GATE is retired), the hero floor 210 (was 240),
+and the hero→tools gap 18 (was 28). The pins below carry the Round-4
+values with ``V0.6.84`` annotations; the Round-3 behaviors that survive
+untouched (window sizing §2, the rail formula §3.1, the body-driven hero
+rule, the transparent RGBA art §5.2) keep their original pins.
+
 Source-level pins follow the M2 test_m2_dashboard.py style; the pure
 geometry pins follow test_v0667_window_visibility.py.
 """
@@ -191,7 +201,9 @@ class TestResponsiveRailLive:
         # the nav labels word-wrap (never clipped) — the item grows instead
         item = rail._items["pdf_to_markdown"]
         assert item._text_label.wordWrap() is True
-        assert item.minimumHeight() >= 37
+        # V0.6.84 (Round-4 §3.2, compact density): 32 px rows (was 37) —
+        # the word-wrap guarantee stays; a wrapped label still GROWS the row.
+        assert item.minimumHeight() >= 32
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -201,8 +213,11 @@ class TestQuickToolsTiersSource:
     def test_floor_and_chrome_constants(self):
         from ui_qt.components import dashboard_primitives as dp
 
-        assert dp._TOOL_CARD_FLOOR_W == 272
-        assert dp._TOOL_CARD_CHROME_W == 24 + 18 + 30 + 36 + 2 * 18
+        # V0.6.84 (Round-4 §2.2, compact density): the floor drops 272 → 240
+        # (three columns now reach the app's own 1100×720 minimum window)
+        # and the chrome re-measures to the compact insets.
+        assert dp._TOOL_CARD_FLOOR_W == 240
+        assert dp._TOOL_CARD_CHROME_W == 16 + 14 + 24 + 30 + 2 * 12
 
     def test_card_titles_wrap(self):
         code = _strip_comments(_src("ui_qt/components/dashboard_primitives.py"))
@@ -212,15 +227,31 @@ class TestQuickToolsTiersSource:
     def test_reflow_tier_decision(self):
         code = _strip_comments(_src("ui_qt/views/home_view.py"))
         assert "def _card_comfort_width" in code
-        assert "grid_w >= 3 * comfort + 2 * _GRID_GAP" in code
+        # V0.6.84 (Round-4 §2.3): the decision is FLOOR-driven — the
+        # Round-3 single-line comfort GATE (3*comfort) is retired; the
+        # floor tiers + the measured page-minimum safety net stay.
+        assert "grid_w >= 3 * floor + 2 * _GRID_GAP" in code
         assert "grid_w >= 2 * floor + _GRID_GAP" in code
+        assert "grid_w >= 3 * comfort" not in code
+
+    def test_card_density_band(self):
+        """V0.6.84 (Round-4 §2.2): the card height + typography scale with
+        the body — 84/13/11 at the compact floor, 122/17/13 at the
+        reference ceiling."""
+        code = _strip_comments(_src("ui_qt/views/home_view.py"))
+        assert "_CARD_H_MIN = 84" in code
+        assert "_CARD_H_MAX = 122" in code
+        assert "def _apply_grid_density" in code
+        assert "card.set_density(title_px, desc_px)" in code
 
 
 class TestHeroRound3Source:
     def test_body_driven_height_rule(self):
         code = _strip_comments(_src("ui_qt/views/home_view.py"))
         assert "_HERO_BODY_RATIO = 0.325" in code
-        assert "_HERO_MIN_H = 240" in code
+        # V0.6.84 (Round-4 §2.2): the floor drops 240 → 210 so the full
+        # 3×3 grid + heading fit the user's ~582 px viewport body.
+        assert "_HERO_MIN_H = 210" in code
         assert "_HERO_MAX_H = 336" in code
         assert "def _hero_target_h" in code
         assert "def _body_height" in code
@@ -240,9 +271,12 @@ class TestHeroRound3Source:
         assert "def _hero_text_need_w" in code
 
     def test_gap_in_band(self):
-        # §6: hero→tools gap 24–32; 28 lands mid-band.
+        # V0.6.84 (Round-4 §8, compact density): 18 — the page-level gaps
+        # re-measured so hero + heading + the 3×3 grid fit the compact
+        # viewport with no scrollbar (the Round-3 band 24–32 applied at the
+        # 1440×900 composition; the Round-4 target is the ~1100×720 band).
         code = _src("ui_qt/views/home_view.py")
-        assert re.search(r"root\.addSpacing\(28\)", code)
+        assert re.search(r"root\.addSpacing\(18\)", code)
 
     def test_chrome_heights_in_band(self):
         # §3.3/§6: header 44–52 (50), status strip 38–44 (42).

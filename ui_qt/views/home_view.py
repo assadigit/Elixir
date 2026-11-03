@@ -134,35 +134,50 @@ _QUICK_CARDS: list[tuple[str, str, str, str, bool]] = [
     ),
 ]
 
-# Reflow (spec §6/P2 + Round-3 §4.1): the reference's three equal columns
-# at wide content runs, two at medium, one on narrow windows. V0.6.83
-# (Round-3 §4.1): the decision is TIERED —
-#   * three columns only while every card keeps its SINGLE-LINE title
-#     (the measured comfort width: the widest title on the RUNNING font
-#     stack + the card chrome),
-#   * two columns down to the readability floor (_TOOL_CARD_FLOOR_W —
-#     2-line titles, wrapped descriptions, never a clip),
-#   * one column only when even two floor-width cards cannot fit —
-# and the V0.6.81 measured page-minimum verification still runs beneath
-# it (a count is only KEPT when the page's real minimum fits the viewport
-# the scroll area is offering). The fixed 820/520 thresholds live on only
-# as the documented design intent of the reference's 3-column band.
+# Reflow (spec §6/P2 + Round-3 §4.1 + Round-4 §2.3): the reference's
+# three equal columns at wide content runs, two at medium, one on narrow
+# windows. V0.6.84 (Round-4 §2.3) — the decision is FLOOR-driven:
+#   * 3 columns while the grid can give every card the compact
+#     readability floor (_TOOL_CARD_FLOOR_W — wrapped 2-line titles,
+#     never a clip) — "Use the actual available content width to
+#     determine column count"; the Round-3 single-line comfort GATE is
+#     retired (it needed ≈860 px of grid, which the user's real ~790 px
+#     grid can never offer — the audit's "two columns; only four cards
+#     visible"),
+#   * 2 columns down to two floor-width cards,
+#   * 1 column only when even two floor-width cards cannot fit.
+# The V0.6.81 measured page-minimum verification still runs beneath it
+# (a count is only KEPT when the page's real minimum fits the viewport
+# the scroll area is offering).
 _GRID_3_MIN_W = 820
 _GRID_2_MIN_W = 520
 # V0.6.82 (Round-2 correction): the reference's inter-card gap measured
-# 12-13 px (row bands [510..634]/[646..770]/[781..912]) vs the previous 15 —
-# kept in sync with the setSpacing call in _build_quick_tools.
-_GRID_GAP = 13
+# 12-13 px (row bands [510..634]/[646..770]/[781..912]).
+# V0.6.84 (Round-4 §2.2): 12 — the spec's "approximately 10–12 px
+# horizontal and vertical gaps" band, mid-value; kept in sync with the
+# setSpacing call in _build_quick_tools.
+_GRID_GAP = 12
 
-# ── the Round-3 hero rhythm (V0.6.83, spec §6) ───────────────────────────
+# ── the Round-4 card density band (V0.6.84, spec §2.2) ────────────────────
+# The card height is BODY-driven like the hero: ~0.135 of the scroll
+# viewport (the reference proportion — cards ≈0.13 of its body), floored
+# at 84 (the spec's "approximately 80–90 logical px" compact height — the
+# user's ~628 px body produces exactly that) and ceiled at 122 (the
+# V0.6.82 reference render at the 1536-wide canvas).
+_CARD_H_MIN = 84
+_CARD_H_MAX = 122
+_CARD_BODY_RATIO = 0.135
+
+# ── the Round-3 hero rhythm (V0.6.83, spec §6; retuned V0.6.84) ────────
 # The hero's target height is BODY-driven: ~0.325 of the scroll viewport's
-# height (the reference composes its hero at ~0.38 of the body — the
-# Round-3 audit explicitly directs "reduce its relative height"), clamped
-# to the 220–250 px band's neighbourhood at the 1440×900 composition and
-# never below the 240 floor (the spec's band bottom plus the CTA's 44 px
-# touch floor) nor above the 336 reference rhythm.
+# height, clamped to a floor/ceiling band. V0.6.84 (Round-4 §2.2): the
+# floor drops 240 → 210 — at the user's ~582 px body the 240 floor had the
+# hero consuming 45% of the viewport (the reference composes its hero at
+# ~38%), pushing the third grid row past the fold. At 210 the hero lands
+# ≈36% and the full 3×3 grid + heading fit the viewport with ~15 px to
+# spare. The 336 ceiling stays (the reference rhythm at wide canvases).
 _HERO_BODY_RATIO = 0.325
-_HERO_MIN_H = 240
+_HERO_MIN_H = 210
 _HERO_MAX_H = 336
 # The reference text-column rhythm the hero's typography/spacing scales
 # from (the V0.6.82 ink-calibrated values: 33 top, 16/12/36/18 gaps, the
@@ -234,9 +249,14 @@ class _HeroCard(QFrame):
 
         # ── the soft translucent circles behind the books (the
         # reference's filled geometric washes, not outline arcs) ───────
+        # V0.6.84 (Round-4 §7): the washes step back (alpha 34/28/22 →
+        # 24/18/14) so the books/quill/inkwell still-life is the focal
+        # point — the spec's "Refine the background shapes if they
+        # compete with the artwork. The books and quill should be the
+        # focal point, not the decorative circles."
         painter.setPen(Qt.PenStyle.NoPen)
         cx, cy = w * 0.72, h * 0.34
-        for dia, alpha in ((h * 1.62, 34), (h * 1.14, 28), (h * 0.70, 22)):
+        for dia, alpha in ((h * 1.62, 24), (h * 1.14, 18), (h * 0.70, 14)):
             ac = QColor(p.sage)
             ac.setAlpha(alpha)
             painter.setBrush(ac)
@@ -297,12 +317,20 @@ class _HeroCTA(QPushButton):
         pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
         painter.setPen(pen)
         # V0.6.82: inset 26 — the reference's arrow sits ~26 px from the
-        # pill's right edge (measured [557..561] inside [335..587]).
-        x = self.width() - 26.0
+        # pill's right edge (measured [557..561] inside [335..587]) at
+        # the 48 px QSS padding.
+        # V0.6.84 (Round-4, the "Conversion➜" collision): the inset and
+        # the glyph scale WITH the hero (set by _scale_hero_typography
+        # alongside the padding) so the arrow keeps its measured relation
+        # to the label at every size — at the user's ~0.72 scale the old
+        # fixed 26 px inset landed the arrow flush against the label.
+        x = self.width() - float(getattr(self, "_arrow_inset", 26.0))
+        ln = float(getattr(self, "_arrow_len", 9.0))
+        hd = float(getattr(self, "_arrow_head", 5.0))
         y = self.height() / 2.0
-        painter.drawLine(QPointF(x - 9, y), QPointF(x, y))
-        painter.drawLine(QPointF(x - 5, y - 5), QPointF(x, y))
-        painter.drawLine(QPointF(x - 5, y + 5), QPointF(x, y))
+        painter.drawLine(QPointF(x - ln, y), QPointF(x, y))
+        painter.drawLine(QPointF(x - hd, y - hd), QPointF(x, y))
+        painter.drawLine(QPointF(x - hd, y + hd), QPointF(x, y))
         painter.end()
 
 
@@ -364,10 +392,11 @@ class HomeView(QWidget):
         # never duplicated as a tile; spec §6 / decision Q7). V0.6.78: the
         # reference's ~40 px breathing room after the hero. V0.6.82:
         # measured 43 px (hero bottom 430 → heading ink 473).
-        # V0.6.83 (Round-3 §6): the spec's band for the gap at the 1440×900
-        # composition is 24–32 px — 28 lands mid-band and keeps all three
-        # grid rows on one page at the primary acceptance target.
-        root.addSpacing(28)
+        # V0.6.83 (Round-3 §6): 28.
+        # V0.6.84 (Round-4 §8, layout polish): 18 — the compact rhythm's
+        # band; with the 210 hero floor the whole page (hero + heading +
+        # the 3×3 grid) fits the user's ~582 px viewport with no scrollbar.
+        root.addSpacing(18)
         root.addLayout(self._build_quick_tools())
 
         root.addStretch()
@@ -717,14 +746,18 @@ class HomeView(QWidget):
         head_row.addWidget(self._view_all_btn, 0, Qt.AlignmentFlag.AlignVCenter)
         section.addLayout(head_row)
         # V0.6.82 (Round-2 correction): the reference's heading→grid air —
-        # heading row bottom ≈499, first card top 510 → 11 px (was 22,
-        # which pushed the grid 7-8 px low and pushed the third row's
-        # bottom into the status bar's breathing room).
-        section.addSpacing(11)
+        # heading row bottom ≈499, first card top 510 → 11 px (was 22).
+        # V0.6.84 (Round-4 §8): 6 — the compact band (every page-level gap
+        # re-measured for the density pass).
+        section.addSpacing(6)
 
         self._quick_cards: list[QuickToolCard] = []
         self._quick_grid = QGridLayout()
-        self._quick_grid.setSpacing(_GRID_GAP)
+        # V0.6.84 (Round-4 §2.2): 12 px horizontal / 11 px vertical — both
+        # inside the spec's "approximately 10–12 px" band; the vertical
+        # pinch buys the third row back at the compact body.
+        self._quick_grid.setHorizontalSpacing(12)
+        self._quick_grid.setVerticalSpacing(11)
         self._grid_cols = 0  # forces the first _relayout to lay everything out
         meta = _tool_meta()
         for key, title, desc, glyph, featured in _QUICK_CARDS:
@@ -739,13 +772,16 @@ class HomeView(QWidget):
         return section
 
     def _card_comfort_width(self) -> int:
-        """The Round-3 §4.1/§4.3 COMFORT width: the widest card title
-        measured on the RUNNING font stack (each card's OWN styled label
-        metrics — V0.6.81's font-stack-proof measurement, kept) plus the
-        card chrome (_TOOL_CARD_CHROME_W). Three columns are only chosen
-        while a third of the grid gives every card this width — the
-        reference's single-line titles; anything narrower takes two
-        comfortable columns instead of three wrapped ones."""
+        """The measured SINGLE-LINE comfort width: the widest card title
+        on the RUNNING font stack (each card's OWN styled label metrics
+        — V0.6.81's font-stack-proof measurement) plus the card chrome
+        (_TOOL_CARD_CHROME_W).
+
+        V0.6.84 (Round-4 §2.3): informational only — the three-column
+        decision no longer GATES on it (the compact floor does); the
+        number stays the documented ceiling at which every title renders
+        single-line, used by the characterization tests.
+        """
         from ui_qt.components.dashboard_primitives import _TOOL_CARD_CHROME_W as chrome
 
         widest = 0
@@ -757,6 +793,43 @@ class HomeView(QWidget):
             widest = max(widest, fm.horizontalAdvance(label.text()))
         return widest + chrome
 
+    # ── the Round-4 card density band (V0.6.84, spec §2.2) ─────────────
+    def _card_target_h(self) -> int:
+        """The compact card height: ~0.135 of the available body height,
+        clamped [_CARD_H_MIN, _CARD_H_MAX] — 84 at the user's ~628 px body
+        (the spec's 80–90 band), 122 at the 1536-wide reference canvas
+        (the V0.6.82 render)."""
+        return max(_CARD_H_MIN, min(_CARD_H_MAX, round(self._body_height() * _CARD_BODY_RATIO)))
+
+    def _apply_grid_density(self) -> None:
+        """Apply the density band to every card + grid row minimum (the
+        cards keep their vertical-centred text block; the extra height
+        reads as air, exactly like the reference's roomy cards).
+
+        The card TYPOGRAPHY tracks the same band — 13/11 px at the
+        compact floor (single-line titles in the ~149 px text column a
+        three-column row offers at the user's window), 17/13 px at the
+        reference ceiling (the V0.6.82 ink-calibrated render). A fixed
+        14 px title wrapped to two lines at the compact width and pushed
+        the cards past the spec's 80–90 px height band; a fixed 13 px
+        would lose the reference's character at the wide canvas — the
+        band keeps both."""
+        h = self._card_target_h()
+        if getattr(self, "_card_h", None) == h:
+            return
+        self._card_h = h
+        s = (h - _CARD_H_MIN) / (_CARD_H_MAX - _CARD_H_MIN)
+        title_px = round(13 + 4 * s, 1)
+        desc_px = round(11 + 2 * s, 1)
+        for card in getattr(self, "_quick_cards", []) or []:
+            card.setMinimumHeight(h)
+            card.set_density(title_px, desc_px)
+        rows = (len(self._quick_cards) + max(1, getattr(self, "_grid_cols", 1)) - 1) // max(
+            1, getattr(self, "_grid_cols", 1)
+        )
+        for r in range(self._quick_grid.rowCount()):
+            self._quick_grid.setRowMinimumHeight(r, h if r < rows else 0)
+
     def _relayout_quick_grid(self) -> None:
         """(Re)place the cards into the grid at the column count the current
         width ACTUALLY supports — the reference's three equal columns, two
@@ -764,22 +837,23 @@ class HomeView(QWidget):
         widgets — they are re-added, never rebuilt (click routing + focus
         live on the card, so a reflow loses nothing).
 
-        V0.6.83 (Round-3 §4.1): the candidate ceiling is TIERED —
+        V0.6.84 (Round-4 §2.3): the decision is FLOOR-driven —
 
-        * 3 while a third of the grid still gives every card its
-          SINGLE-LINE title (the measured comfort width — see
-          _card_comfort_width),
-        * 2 down to the readability floor (_TOOL_CARD_FLOOR_W: wrapped
-          2-line titles, never a clip),
-        * 1 only when even two floor-width cards cannot fit.
+        * 3 while the grid gives every card the compact readability floor
+          (_TOOL_CARD_FLOOR_W — 2-line wrapped titles, never a clip),
+        * 2 while two floor-width cards fit,
+        * 1 only when even two cannot.
 
-        The spec's initial thresholds (900/600) are refined exactly as
-        §4.1 directs ("Refine them based on card minimum width and runtime
-        measurements"): the measured comfort lands the 3-column band at
-        ≈1035 px of grid width, the 2-column band down to ≈557 px.
+        The Round-3 single-line comfort GATE is retired: it required
+        ≈3×(title+chrome)+2×gap ≈ 860 px of grid, which the user's real
+        ~790 px grid can never offer — exactly the audit's "two columns;
+        only four cards visible". The spec's "Do not hardcode a two-column
+        grid. Do not allow one card per row at ordinary desktop
+        dimensions" is now structurally guaranteed: at the app's own
+        1100×720 minimum window the grid width is ≈807 px ≥ 3×240+2×12.
 
         V0.6.81 (the Windows "not enough space" fix) stays as the safety
-        net beneath the tiers: a candidate count is only KEPT when the
+        net beneath the floors: a candidate count is only KEPT when the
         page's own measured minimum — every card title, the heading row
         and the hero at the REAL metrics of the running font stack — fits
         the width the scroll viewport is actually offering. Measurement
@@ -801,8 +875,7 @@ class HomeView(QWidget):
 
         width = max(self.width(), 1)
         grid_w = max(0, width - 22 - 29)  # the page's own content margins
-        comfort = self._card_comfort_width()
-        if grid_w >= 3 * comfort + 2 * _GRID_GAP:
+        if grid_w >= 3 * floor + 2 * _GRID_GAP:
             cand = 3
         elif grid_w >= 2 * floor + _GRID_GAP:
             cand = 2
@@ -846,11 +919,14 @@ class HomeView(QWidget):
         for r in range(self._quick_grid.rowCount()):
             # Retired rows (a reflow from more columns to fewer leaves
             # empty rows behind — QGridLayout cannot delete them) MUST
-            # drop their minimums again, or the stale 120 px floors
-            # inflate the page's minimum ~240 px past the scroll
-            # viewport (the V0.6.80 scrollbar catch). V0.6.82: the floor
-            # tracks the card's new 122 px minimum (rendered ~124).
-            self._quick_grid.setRowMinimumHeight(r, 124 if r < rows else 0)
+            # drop their minimums again, or the stale floors inflate the
+            # page's minimum past the scroll viewport (the V0.6.80
+            # scrollbar catch). V0.6.84: the floor tracks the Round-4
+            # density band (home_view._apply_grid_density owns the live
+            # value; 84 is the constructor-time floor).
+            self._quick_grid.setRowMinimumHeight(
+                r, getattr(self, "_card_h", _CARD_H_MIN) if r < rows else 0
+            )
             self._quick_grid.setRowStretch(r, 0)
         self.layout().activate()  # synchronous minimum refresh — see above
 
@@ -868,6 +944,9 @@ class HomeView(QWidget):
         # V0.6.79 (spec P2) + V0.6.83: the hero's typography AND rhythm
         # scale with the hero target (see _scale_hero_typography).
         self._scale_hero_typography()
+        # V0.6.84 (Round-4 §2.2): the card density band follows the body
+        # (84 compact ↔ 122 reference) before the reflow reads row floors.
+        self._apply_grid_density()
         # Spec §7: the illustration yields at narrow widths so the hero
         # text keeps its room (re-scaling when the size bucket changes);
         # spec §6: the grid reflows with width.
@@ -909,6 +988,14 @@ class HomeView(QWidget):
             eyebrow_px,
             cta_px,
             round(scale * 100),
+            # V0.6.84 (Round-4 §9, the dark-theme hero fix): the ACTIVE
+            # THEME MODE joins the state tuple — refresh_theme() calls
+            # through here on every toggle, and without the mode in the
+            # key the guard skipped the re-apply (the palette colours in
+            # these per-widget stylesheets went stale: charcoal headline
+            # ink rendering on the dark hero ground — the pre-existing
+            # defect visible in the V0.6.83 now4_dark.png evidence).
+            theme_manager.mode,
         )
         if getattr(self, "_hero_scale", None) == state:
             return
@@ -932,13 +1019,18 @@ class HomeView(QWidget):
             )
         # The CTA: QSS padding/typography scale with s (the 44 px touch
         # floor from _build_hero holds); the capsule painter follows the
-        # widget rect at any height.
+        # widget rect at any height. V0.6.84: the trailing arrow's
+        # inset/length/head track the SAME scale (the reference's
+        # 26/9/5 at s=1.0) so the glyph never collides with the label.
         pad_v = max(9, round(15 * scale))
         pad_h = max(28, round(48 * scale))
         if getattr(self, "cta_btn", None) is not None:
             self.cta_btn.setStyleSheet(
                 f"padding: {pad_v}px {pad_h}px; font-size: {cta_px}px;font-weight: 600;"
             )
+            self.cta_btn._arrow_inset = max(14.0, round(26 * scale))
+            self.cta_btn._arrow_len = max(6.0, round(9 * scale))
+            self.cta_btn._arrow_head = max(3.5, round(5 * scale))
         # The rhythm spacers (V0.6.83): every gap in the text column scales
         # with s — changeSize + activate refreshes the layout minimum
         # synchronously (same contract as _lay_grid_columns).
@@ -953,13 +1045,17 @@ class HomeView(QWidget):
     # refresh-on-toggle path)
     # ══════════════════════════════════════════════════════════════════════
     def refresh_theme(self) -> None:
-        """Re-apply theme-dependent bits: the CTA glyph re-tints and the
-        Quick Tool cards re-tint (all other chrome is QSS-driven and
-        re-polishes globally). V0.6.83: the hero illustration is now a
-        TRANSPARENT pixmap — nothing re-composites on a toggle (the call
-        below is kept for the narrow-width hide rule's sake; it is a no-op
-        while the budget key is unchanged)."""
+        """Re-apply theme-dependent bits: the CTA glyph re-tints, the hero
+        text column re-styles (V0.6.84: _scale_hero_typography carries the
+        theme mode in its state key, so a toggle re-applies the palette
+        colours — the fix for the stale charcoal ink on the dark hero),
+        and the Quick Tool cards re-tint (all other chrome is QSS-driven
+        and re-polishes globally). V0.6.83: the hero illustration is a
+        TRANSPARENT pixmap — nothing re-composites on a toggle (the
+        _apply_hero_pixmap call below is kept for the narrow-width hide
+        rule's sake; it is a no-op while the budget key is unchanged)."""
         self._apply_hero_pixmap()
+        self._scale_hero_typography()
         self._set_cta_icon()
         for card in self._quick_cards:
             card.refresh_theme()
