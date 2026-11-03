@@ -31,6 +31,136 @@
 >    information invented; the commits remain the authoritative record.
 
 
+## V0.6.84 — UI/UX correction Round 4: the compact three-column dashboard at the user's real window (the floor-driven Quick Tools reflow — 3 columns now reach the app's own 1100×720 minimum; the card density band 84–122 px with typography that scales 13/11 → 17/13), the three-region sidebar (scroll-free primary nav, FIXED lower Settings/About, compact fully-readable tagline card — no internal scrollbar at the user's rail), exactly ONE theme control (the status strip's Light/Dark selector; the top-bar moon removed), IBM Plex Sans as the bundled primary typeface (selected over Manrope by the spec §6.3 in-app comparison, replacing Inter), the dark-theme hero-ink fix, and the Round-4 evidence set (now5*.png)
+
+**The correction spec behind this release:** the Round-4 audit
+(`ELIXIR_UI_UX_CORRECTION_ROUND_4.md`) measured the shipped dashboard
+(`now5.png`/`14.png`, 1096×717 — the user's real window) against the
+approved reference and found the remaining defects were all DENSITY
+defects: the Quick Tools grid collapsed to two columns with only four
+cards visible, the sidebar scrolled with its last tools clipped and its
+tagline truncated, two theme controls competed, and the typeface read
+generic. Every fix below is measured against the running application at
+the user's actual window class, not the 1536-wide mockup canvas the
+V0.6.82 ink calibration had targeted.
+
+**The Quick Tools grid (spec §2 — the critical row):** the reflow decision
+becomes FLOOR-driven. The Round-3 single-line comfort GATE needed
+≈3×(title+chrome)+2×gap ≈ 860 px of grid, which the user's ~790 px grid
+could never offer — structurally the audit's "two columns; only four
+cards visible". The compact floor is 240 px (`_TOOL_CARD_FLOOR_W`), so
+three columns need 744 px — the app's own 1100×720 minimum window offers
+≈807: **the reference's 3×3 grid now reaches the app's own floor** (2
+columns down to 492, 1 below that; the V0.6.81 measured page-minimum
+safety net stays beneath everything). The card itself is re-measured for
+the compact density (spec §2.2): margins 16/12/14/12 (was 24/14/18/14),
+icon 24 (was 30), the arrow affordance a 30 px disc (was 36), 12 px
+horizontal / 11 px vertical gaps (the spec's 10–12 band) — the chrome
+drops 144 → 108 px. The card HEIGHT becomes a body-driven band
+(`_CARD_H_MIN/_CARD_H_MAX/_CARD_BODY_RATIO`): ~0.135 of the scroll
+viewport, floored at 84 (the spec's "approximately 80–90 logical px" —
+what the user's ~582 px body produces) and ceiled at 122 (the V0.6.82
+reference render at wide canvases), with the card TYPOGRAPHY scaling
+along it (13/11 px at the compact floor — single-line titles in the
+~149 px text column a three-column row offers — up to 17/13 px at the
+reference ceiling): a fixed 14 px title wrapped to two lines and pushed
+the cards past the spec's height band; a fixed 13 px would lose the
+reference's character at the wide canvas — the band keeps both
+(`QuickToolCard.set_density`, driven from `home_view._apply_grid_density`).
+
+**The sidebar (spec §3/§4):** the rail restructures into the spec's three
+regions — (1) the scrollable PRIMARY navigation (brand row + Home + the
+nine tools: 32 px rows with 18 px icons and a 12/6 group rhythm), (2) the
+FIXED lower navigation (the divider + Settings/About) pinned BELOW the
+scroll area — the V0.6.77–83 layout carried them inside the scrollable
+column, so at the user's window the nine tools filled the viewport and
+the footer vanished below the fold — and (3) the compact tagline card
+(art band 38 px, top inset 12, both brand lines word-wrapped so
+"Knowledge, distilled into clarity." stays fully readable at EVERY rail
+width — the audit's "text clipped" row). The vertical budget closes at
+the user's real rail (58 brand + 370 nav + 78 lower + ~120 card ≈ 624 of
+the 633 available): **no internal scrollbar, nothing clipped** (verified
+live offscreen; below the rail floor the primary nav scrolls
+deliberately while Settings/About and the tagline stay pinned — spec
+§3.3's sanctioned degradation). The compact brand row (32 px leaf, 14+12
+insets) and the 560 px `_BRAND_MIN_RAIL_H` yield floor complete the fit.
+
+**One theme control (spec §5):** the top-bar moon button is REMOVED
+(`theme_btn` no longer exists) — the status strip's Light/Dark selector
+is the app's single visible theme control, with the divider before the
+window controls absorbing the spacing naturally ("redistribute remaining
+controls naturally; do not leave a conspicuous empty slot"). The theme
+ENGINE is untouched: `ThemeManager.toggle/apply`, the
+`~/.elixir/ui_theme.json` persistence, and the window's `_toggle_theme`
+refresh walk all survive (pinned by tests).
+
+**The typeface (spec §6):** **IBM Plex Sans** replaces Inter as the
+bundled primary face — four static weights (400/500/600/700, instanced
+from the Google Fonts variable file with name records rewritten so Qt
+registers every weight under the single family), OFL 1.1 license shipped
+alongside, `load_primary_fonts()` (renamed from `load_inter`) registering
+them through `app_paths.bundle_dir()` so frozen builds resolve them, and
+the QSS stack falling back to Segoe UI Variable → Segoe UI → Helvetica
+Neue → Arial. The selection is the spec §6.3 in-app comparison, not a
+default: BOTH candidates were bundled and rendered through the production
+theme pipeline (light + dark, at the compact 1096×717 window and the
+1536×1024 reference canvas — `scripts/r4_font_eval.py`), and IBM Plex
+Sans won on editorial character/brand fit (the reference is "understated
+and editorial"; Manrope reads modern-SaaS geometric) and on
+compact-density metrics (narrower advance widths: sidebar labels wrap
+less, the featured card's description lands two lines instead of three,
+the page closes its height budget with more slack). The full record
+lives in `assets/fonts/README.md`; no runtime font picker exists.
+
+**The hero (spec §7 + the Round-4 dark-theme fix):** the still-life stays
+a TRUE transparent RGBA composite (the §5.2 alpha proof is pinned by
+tests in BOTH themes); the decorative circle washes step back
+(alpha 34/28/22 → 24/18/14) so the books/quill are the focal point; the
+hero floor drops 240 → 210 (`_HERO_MIN_H`) so the full 3×3 grid + heading
+fit the user's ~582 px viewport body with no scrollbar; and the hero
+CTA's trailing arrow now scales its inset/length/head with the hero (the
+"Conversion➜" collision at ~0.72 scale). **A pre-existing dark-theme
+defect is fixed:** `HomeView.refresh_theme()` never re-applied the
+per-widget hero styles, so a toggle left LIGHT ink on the dark hero
+(charcoal-on-charcoal — visible in the V0.6.83 `now4_dark.png`
+evidence); the scale state now carries the theme mode and the refresh
+walks through it (verified by ink-color pins + the re-captured
+`now5_dark.png`).
+
+**The evidence set (spec §10):** `now5.png` (light, 1096×717 — the
+user's exact "before" framing), `now5_dark.png`, `now5_wide.png`
+(1920×1080), `now5_constrained.png` (880×720 — the 2-column transition),
+`now5_minimum.png` (768×720 — the 1-column floor), `now5_reference.png`
+/ `now5_reference_dark.png` (the 1536×1024 reference framing),
+`now5_overlay.png` + `now5_difference.png` (the aligned reference
+overlay — 62.1% of shell pixels within 8/255 of the reference; the
+remaining delta is the deliberate Round-3/4 compaction: 50 px top bar vs
+the reference's 68, hero 0.325 vs 0.38 of body), and
+`now5_side_by_side.png`. All captured from the RUNNING application
+offscreen (the production window, the production theme pipeline —
+`scripts/r4_screenshot.py`), never a mockup.
+
+**Tests:** `tests/test_v0684_round4_density.py` (33 pins: the reflow
+floors, the density band, the sidebar's three regions, the single theme
+control, the typeface stack, the hero washes/arrow scaling, and the live
+offscreen acceptance checks — 3×3 at the user window AND the reference
+canvas with no page scrollbar, the sidebar complete with no internal
+scrollbar, the tagline fully rendered at both rail profiles, exactly one
+theme control, the toggle-and-persist round trip, the registered IBM
+Plex Sans styles, the transparent art over both themes, and the
+wizard/CTA signal plumbing). The Round-3 and M1 pin suites are updated
+to the superseded Round-4 values with V0.6.84 annotations. The live
+harness restores every module-global it patches (the first run leaked
+`user_data_dir` into the session and poisoned the rebrand-migration
+tests — caught by the chunked baseline comparison, fixed with an
+autouse restore fixture). Full-suite tally on this sandbox: every
+failure set byte-identical to the pristine-baseline chunk runs (the
+documented pre-existing environment issues — p2 parser drift, eval-gate
+baseline, vibevoice/model-dependent e2e, the order-dependent v0600
+segfault that reproduces identically on the untouched tree); ruff check
++ format clean on every touched file; the AGENTS.md deny-list green.
+
+
 ## V0.6.83.1 — post-release CI hotfix: the Qt-enabled Test job no longer dies mid-suite — BOTH order-dependent crashes repaired (the m1 icon test's QGuiApplication was process-poison for every later widget test; the dialog tests' never-deleted top-level widgets segfaulted the interpreter at shutdown / the podcast e2e's ffmpeg fork), and the post-tag Qt-libs CI enablement is documented
 
 **Context (the post-tag `1a4a6dc`, previously documented only in its commit
