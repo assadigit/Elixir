@@ -17,31 +17,29 @@ Delete it and add `logo.png` to customize.
 
 **Directory:** `assets/icons/`
 
-Place PNG files here named after the preset keys to override the default SVG
-icons on the home screen and in the Process Wizard. Recommended size: 128×128px
-with transparent background.
+The six document-type modes ship with PNG artwork (256×256px, transparent
+background, hand-drawn "mode" set supplied by the project owner — extracted
+from `Elixir-Document-Type-Modes.zip` at the repo root). They replace the
+Lucide SVG line icons on the home screen and in the Process Wizard.
 
-| Preset Key              | File Name                    | Default SVG Icon | Shows On     |
-|-------------------------|------------------------------|------------------|--------------|
-| `normal_book`           | `icons/normal_book.png`      | book             | Home + Wizard |
-| `academic_paper`        | `icons/academic_paper.png`   | file-text        | Home + Wizard |
-| `visual_catalogue`      | `icons/visual_catalogue.png` | newspaper        | Home + Wizard |
-| `infographics_slides`   | `icons/infographics_slides.png` | image         | Home + Wizard |
-| `full_ocr`              | `icons/full_ocr.png`         | scan             | Wizard only   |
-| `mixed`                 | `icons/mixed.png`            | layers           | Wizard only   |
+| Preset Key              | File Name                    | Artwork                     | SVG Fallback | Shows On     |
+|-------------------------|------------------------------|-----------------------------|--------------|--------------|
+| `normal_book`           | `icons/normal_book.png`      | Book-mode                   | book         | Home + Wizard |
+| `academic_paper`        | `icons/academic_paper.png`   | Academic-Paper-mode         | file-text    | Home + Wizard |
+| `visual_catalogue`      | `icons/visual_catalogue.png` | Journal-mode                | newspaper    | Home + Wizard |
+| `infographics_slides`   | `icons/infographics_slides.png` | Infographic-Slides-mode  | image        | Home + Wizard |
+| `full_ocr`              | `icons/full_ocr.png`         | Full-OCR-Mode               | scan         | Wizard only   |
+| `mixed`                 | `icons/mixed.png`            | Mixed-Mode                  | layers       | Wizard only   |
 
-## Placeholder Files
+The artwork is cream/paper-toned with dark outlines, so it reads on both the
+light and dark themes without recolouring.
 
-This directory ships with **.txt placeholder files** (not .png) so you know
-exactly which files to create. Each .txt file contains:
-- The expected filename (e.g., `normal_book.png`)
-- The recommended size (128×128px, transparent)
-- A description of what the icon represents
+## Replacing the Artwork
 
-To customize:
-1. Delete the .txt file (e.g., `icons/normal_book.txt`)
-2. Add your PNG with the same name (e.g., `icons/normal_book.png`)
-3. Restart the app — your custom icon appears automatically
+To customize any preset icon:
+1. Replace the PNG (e.g., `icons/normal_book.png`) with your own — keep the
+   same filename; 128–256px square, transparent background recommended.
+2. Restart the app — your icon appears automatically.
 
 ## Fallback Behavior
 
