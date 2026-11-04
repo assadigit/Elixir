@@ -82,15 +82,15 @@ from ui_qt.views.tool_dashboard import TOOL_CARDS
 # in 20 px steps so a resize drag recomposites on step crossings only.
 _HERO_IMAGE_STEP = 20
 
-# V0.6.81: the headline's measured display size. The reference's second
-# line ("clear, structured knowledge.") spans ≈540 px in the reference
-# image; at Inter SemiBold that width corresponds to 39 px (41 px — the
-# V0.6.78 FONT.hero measurement from the ascender — runs the line 567 px
-# wide, past the 545 px text column, re-wrapping the hard two-line break
-# into three lines). The scale sweep in _scale_hero_typography anchors to
-# THIS number; the QSS QLabel#Hero base stays on FONT.hero (harmless —
-# the per-widget override always wins once the view is built).
-_HERO_HEADLINE_PX = 39
+# V0.6.84 (Round-4, logical-canvas calibration): the headline's measured
+# display size — the reference's second line ("clear, structured
+# knowledge.") spans 348 LOGICAL px with a 26 px ascender ink over 2x30 px
+# lines. The V0.6.78-81 value (39) was the reference PNG's raster-pixel
+# ascender, inflating the headline by the image's 1.536x scale. The scale
+# sweep in _scale_hero_typography anchors to THIS number; the QSS
+# QLabel#Hero base stays on FONT.hero (harmless — the per-widget override
+# always wins once the view is built).
+_HERO_HEADLINE_PX = 27
 
 # Below this CONTENT width the illustration hides (spec §7 narrow-width
 # rule). V0.6.75: ONLY the 560 px minimum window's ≈330 px content band
@@ -149,26 +149,28 @@ _QUICK_CARDS: list[tuple[str, str, str, str, bool]] = [
 # as the documented design intent of the reference's 3-column band.
 _GRID_3_MIN_W = 820
 _GRID_2_MIN_W = 520
-# V0.6.82 (Round-2 correction): the reference's inter-card gap measured
-# 12-13 px (row bands [510..634]/[646..770]/[781..912]) vs the previous 15 —
-# kept in sync with the setSpacing call in _build_quick_tools.
-_GRID_GAP = 13
+# V0.6.84 (Round-4 §2.2): the reference's inter-card gap at the logical
+# canvas is ~10 px (row bands [513..632]/[648..767]/[783..910], gaps 16 px
+# raster) — kept in sync with the setSpacing call in _build_quick_tools.
+_GRID_GAP = 10
 
-# ── the Round-3 hero rhythm (V0.6.83, spec §6) ───────────────────────────
-# The hero's target height is BODY-driven: ~0.325 of the scroll viewport's
-# height (the reference composes its hero at ~0.38 of the body — the
-# Round-3 audit explicitly directs "reduce its relative height"), clamped
-# to the 220–250 px band's neighbourhood at the 1440×900 composition and
-# never below the 240 floor (the spec's band bottom plus the CTA's 44 px
-# touch floor) nor above the 336 reference rhythm.
-_HERO_BODY_RATIO = 0.325
-_HERO_MIN_H = 240
-_HERO_MAX_H = 336
+# ── the Round-4 hero rhythm (V0.6.84, spec §6/§7 — logical calibration) ──
+# The hero's target height stays BODY-driven: ~0.36 of the scroll
+# viewport's height (the reference composes its hero at 220 of a 580 px
+# body = 0.379), clamped to [192, 260] — the reference's 220 px hero at
+# the logical canvas with room for the CTA's 44 px touch floor at the
+# bottom and the 10.5/27/14 type rhythm. The V0.6.83 band (240-336) was
+# calibrated on the reference PNG's raster pixels (1.536x the logical
+# canvas).
+_HERO_BODY_RATIO = 0.36
+_HERO_MIN_H = 192
+_HERO_MAX_H = 260
 # The reference text-column rhythm the hero's typography/spacing scales
-# from (the V0.6.82 ink-calibrated values: 33 top, 16/12/36/18 gaps, the
-# 39 px two-line headline, 18 px two-line support, the 57 px capsule CTA)
-# — at scale 1.0 the column measures ≈336 px, the reference hero's height.
-_HERO_RHYTHM_BASE_H = 336
+# from (the V0.6.84 logical values: 22 top, 8/10/20/8 gaps, the 27 px
+# two-line headline, 14 px two-line support, the 44 px touch-floor CTA
+# capsule) — at scale 1.0 the column measures ≈236 px (Manrope's tall
+# line metrics), the reference hero's height plus the CTA touch floor.
+_HERO_RHYTHM_BASE_H = 236
 
 
 if TYPE_CHECKING:  # pragma: no cover — typing only
@@ -233,10 +235,14 @@ class _HeroCard(QFrame):
         painter.drawPath(hill2)
 
         # ── the soft translucent circles behind the books (the
-        # reference's filled geometric washes, not outline arcs) ───────
+        # reference's filled geometric washes, not outline arcs).
+        # V0.6.84 (Round-4 §7): the washes recede — lower alphas and a
+        # rightward center so the books/quill remain the focal point
+        # ("Refine the background shapes if they compete with the
+        # artwork").
         painter.setPen(Qt.PenStyle.NoPen)
-        cx, cy = w * 0.72, h * 0.34
-        for dia, alpha in ((h * 1.62, 34), (h * 1.14, 28), (h * 0.70, 22)):
+        cx, cy = w * 0.76, h * 0.36
+        for dia, alpha in ((h * 1.55, 22), (h * 1.08, 17), (h * 0.66, 13)):
             ac = QColor(p.sage)
             ac.setAlpha(alpha)
             painter.setBrush(ac)
@@ -349,7 +355,11 @@ class HomeView(QWidget):
         # margins 22/29 place the hero cream exactly there (was 26/30 →
         # [314..1483]).
         root = QVBoxLayout(self)
-        root.setContentsMargins(22, 0, 29, 0)
+        # V0.6.84 (Round-4 §2.3): the page insets tighten (22/29 → 16/18) —
+        # the reference's grid insets at the logical canvas are ~17/31, and
+        # the tighter pair keeps three columns comfortable at BOTH the
+        # 1096×717 field window and the 1000×667 reference canvas.
+        root.setContentsMargins(16, 0, 18, 0)
         root.setSpacing(0)
         self._hero_visual_w = 0
 
@@ -364,10 +374,11 @@ class HomeView(QWidget):
         # never duplicated as a tile; spec §6 / decision Q7). V0.6.78: the
         # reference's ~40 px breathing room after the hero. V0.6.82:
         # measured 43 px (hero bottom 430 → heading ink 473).
-        # V0.6.83 (Round-3 §6): the spec's band for the gap at the 1440×900
-        # composition is 24–32 px — 28 lands mid-band and keeps all three
-        # grid rows on one page at the primary acceptance target.
-        root.addSpacing(28)
+        # V0.6.84 (Round-4 §8): 12 — the reference's hero-bottom to
+        # heading-ink air at the logical canvas, keeping all three compact
+        # grid rows on one page at BOTH the 1096×717 field window and the
+        # 1000×667 reference canvas.
+        root.addSpacing(12)
         root.addLayout(self._build_quick_tools())
 
         root.addStretch()
@@ -403,8 +414,8 @@ class HomeView(QWidget):
         # reference's art reaches x=1486 with the cream ending 1487 —
         # right margin 10 → 0).
         lay = QHBoxLayout(hero)
-        lay.setContentsMargins(26, 6, 0, 0)
-        lay.setSpacing(18)
+        lay.setContentsMargins(24, 2, 0, 0)
+        lay.setSpacing(14)
 
         text_col = QVBoxLayout()
         text_col.setSpacing(0)
@@ -426,14 +437,14 @@ class HomeView(QWidget):
             self._hero_spacers.append((item, base))
             text_col.addItem(item)
 
-        _rhythm(33)
+        _rhythm(22)
 
         # The reference hero's eyebrow — small, tracked-out, sage.
         eyebrow = QLabel("WELCOME TO ELIXIR")
         eyebrow.setObjectName("Eyebrow")
         self._hero_eyebrow = eyebrow
         text_col.addWidget(eyebrow)
-        _rhythm(16)
+        _rhythm(8)
 
         # V0.6.81: the reference's EXACT two-line break is explicit — a
         # hard newline in the label text. The V0.6.78 wrap-cap approach
@@ -450,9 +461,9 @@ class HomeView(QWidget):
         heading.setObjectName("Hero")
         self._hero_heading = heading
         heading.setWordWrap(True)
-        heading.setMaximumWidth(545)
+        heading.setMaximumWidth(400)
         text_col.addWidget(heading)
-        _rhythm(12)
+        _rhythm(10)
 
         # V0.6.82 (Round-2 correction): the reference's EXACT two-line
         # support break is pinned the same way the headline is — greedy
@@ -468,9 +479,9 @@ class HomeView(QWidget):
         support.setObjectName("Support")
         self._hero_support = support
         support.setWordWrap(True)
-        support.setMaximumWidth(520)
+        support.setMaximumWidth(370)
         text_col.addWidget(support)
-        _rhythm(36)
+        _rhythm(20)
 
         # ONE clear primary action (spec §6). Decision Q7: the header
         # "✨ Process Wizard" button is gone; the hero owns the entry and
@@ -486,7 +497,7 @@ class HomeView(QWidget):
         self._set_cta_icon()
         self.cta_btn.clicked.connect(self.start_requested.emit)
         text_col.addWidget(self.cta_btn, 0, Qt.AlignmentFlag.AlignLeft)
-        _rhythm(18)
+        _rhythm(8)
         text_col.addStretch()
 
         lay.addLayout(text_col, 1)
@@ -632,12 +643,11 @@ class HomeView(QWidget):
         return max(1, self.height() or 640)
 
     def _hero_target_h(self) -> int:
-        """The Round-3 hero height: ~0.325 of the available body height,
-        clamped [_HERO_MIN_H, _HERO_MAX_H]. Spec §6: "approximately
-        220–250 px, adapting gently to available space" — at the 1440×900
-        composition (764 px of body) this lands ≈248; the reference window
-        (888 px of body) gets ≈289 — the audit's "reduce its relative
-        height" vs the reference's ~0.38 share."""
+        """The Round-4 hero height: ~0.36 of the available body height,
+        clamped [_HERO_MIN_H, _HERO_MAX_H]. At the 1096×717 field window
+        (583 px of body) this lands ≈210; the 1000×667 reference canvas
+        (533 px of body) gets its floor 196 — both leaving room for the
+        three compact grid rows below (the Round-4 §8 proportion)."""
         return max(_HERO_MIN_H, min(_HERO_MAX_H, round(self._body_height() * _HERO_BODY_RATIO)))
 
     def _hero_text_need_w(self) -> int:
@@ -680,7 +690,7 @@ class HomeView(QWidget):
         target_h = self._hero_target_h()
         by_h = round((target_h + 2) * 504 / 318)  # the ink-crop's aspect
         by_w = round(self.width() * 0.55)
-        card_w = max(0, self.width() - 22 - 29)
+        card_w = max(0, self.width() - 16 - 18)  # V0.6.84: the page margins
         by_text = card_w - 26 - 18 - self._hero_text_need_w()
         raw = max(120, min(by_h, by_w, by_text))
         return raw // _HERO_IMAGE_STEP * _HERO_IMAGE_STEP
@@ -703,7 +713,7 @@ class HomeView(QWidget):
         head_row.setSpacing(10)
         p = theme_manager.palette
         zap = QLabel()
-        zap.setPixmap(icon("zap", p.sage, 20).pixmap(20, 20))
+        zap.setPixmap(icon("zap", p.sage, 18).pixmap(18, 18))
         head_row.addWidget(zap, 0, Qt.AlignmentFlag.AlignVCenter)
         head = QLabel("Quick Tools")
         head.setObjectName("SectionHead")
@@ -720,7 +730,7 @@ class HomeView(QWidget):
         # heading row bottom ≈499, first card top 510 → 11 px (was 22,
         # which pushed the grid 7-8 px low and pushed the third row's
         # bottom into the status bar's breathing room).
-        section.addSpacing(11)
+        section.addSpacing(7)
 
         self._quick_cards: list[QuickToolCard] = []
         self._quick_grid = QGridLayout()
@@ -800,7 +810,7 @@ class HomeView(QWidget):
         from ui_qt.components.dashboard_primitives import _TOOL_CARD_FLOOR_W as floor
 
         width = max(self.width(), 1)
-        grid_w = max(0, width - 22 - 29)  # the page's own content margins
+        grid_w = max(0, width - 16 - 18)  # the page's own content margins (V0.6.84: 16/18)
         comfort = self._card_comfort_width()
         if grid_w >= 3 * comfort + 2 * _GRID_GAP:
             cand = 3
@@ -846,11 +856,11 @@ class HomeView(QWidget):
         for r in range(self._quick_grid.rowCount()):
             # Retired rows (a reflow from more columns to fewer leaves
             # empty rows behind — QGridLayout cannot delete them) MUST
-            # drop their minimums again, or the stale 120 px floors
-            # inflate the page's minimum ~240 px past the scroll
-            # viewport (the V0.6.80 scrollbar catch). V0.6.82: the floor
-            # tracks the card's new 122 px minimum (rendered ~124).
-            self._quick_grid.setRowMinimumHeight(r, 124 if r < rows else 0)
+            # drop their minimums again, or the stale floors inflate the
+            # page's minimum past the scroll viewport (the V0.6.80
+            # scrollbar catch). V0.6.84: the floor tracks the card's
+            # 80 px minimum.
+            self._quick_grid.setRowMinimumHeight(r, 80 if r < rows else 0)
             self._quick_grid.setRowStretch(r, 0)
         self.layout().activate()  # synchronous minimum refresh — see above
 
@@ -890,19 +900,19 @@ class HomeView(QWidget):
         if getattr(self, "_hero_heading", None) is None:
             return
         hero_h = self._hero_target_h()
-        scale = max(0.55, min(1.0, min(hero_h / _HERO_RHYTHM_BASE_H, self.width() / 1180)))
+        scale = max(0.55, min(1.0, min(hero_h / _HERO_RHYTHM_BASE_H, self.width() / 860)))
         # _HERO_HEADLINE_PX (V0.6.81): the measured fit for the reference's
         # exact two-line break — see the constant's note.
         hero_px = max(22, round(_HERO_HEADLINE_PX * scale))
-        support_px = max(13, round(FONT.body_lg * scale))
-        eyebrow_px = max(10, round(14 * scale))
-        cta_px = max(12, round(16 * scale))
+        support_px = max(11, round(FONT.body_lg * scale))
+        eyebrow_px = max(9, round(10.5 * scale))
+        cta_px = max(11, round(13 * scale))
         # V0.6.81: the wrap caps are re-applied on EVERY call — the cap is
         # a maximum, so a stale value never clips text, but re-applying
         # keeps the intended 2-line wrap tuning as the column narrows.
         col = max(160, self.width() - 90)
-        self._hero_heading.setMaximumWidth(max(200, min(round(545 * scale), col)))
-        self._hero_support.setMaximumWidth(max(190, min(round(520 * scale), col)))
+        self._hero_heading.setMaximumWidth(max(200, min(round(400 * scale), col)))
+        self._hero_support.setMaximumWidth(max(190, min(round(370 * scale), col)))
         state = (
             hero_px,
             support_px,
@@ -914,8 +924,11 @@ class HomeView(QWidget):
             return
         self._hero_scale = state
         p = theme_manager.palette
+        # V0.6.84 (Round-4 §6.2): the reference's headline ink is a BOLD
+        # display weight (the mockup reads visibly heavier than semibold) —
+        # weight 700 restores the editorial hierarchy.
         self._hero_heading.setStyleSheet(
-            f"font-size: {hero_px}px; font-weight: 600;"
+            f"font-size: {hero_px}px; font-weight: 700;"
             f"color: {p.text_primary}; background: transparent;"
         )
         self._hero_support.setStyleSheet(
@@ -933,11 +946,19 @@ class HomeView(QWidget):
         # The CTA: QSS padding/typography scale with s (the 44 px touch
         # floor from _build_hero holds); the capsule painter follows the
         # widget rect at any height.
-        pad_v = max(9, round(15 * scale))
-        pad_h = max(28, round(48 * scale))
+        # V0.6.84 (Round-4): ASYMMETRIC padding — the painted trailing
+        # arrow owns the right ~35 px (inset 26 + stem 9), so the right
+        # padding floors at 40 (a smaller floor let the label collide
+        # with the arrow at constrained scales; the 900-wide review
+        # caught "Conversio→n") while the left stays the reference's
+        # compact icon inset.
+        pad_v = max(8, round(10 * scale))
+        pad_l = max(24, round(26 * scale))
+        pad_r = max(40, round(30 * scale))
         if getattr(self, "cta_btn", None) is not None:
             self.cta_btn.setStyleSheet(
-                f"padding: {pad_v}px {pad_h}px; font-size: {cta_px}px;font-weight: 600;"
+                f"padding: {pad_v}px {pad_r}px {pad_v}px {pad_l}px; "
+                f"font-size: {cta_px}px;font-weight: 600;"
             )
         # The rhythm spacers (V0.6.83): every gap in the text column scales
         # with s — changeSize + activate refreshes the layout minimum

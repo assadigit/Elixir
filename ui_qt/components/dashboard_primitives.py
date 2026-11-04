@@ -41,32 +41,37 @@ from ui_qt.theme import RADIUS, theme_manager
 # 37 with the Home pill 45 (reference pill 232×45), tool glyphs 30 px
 # (reference sigma ink 24px wide vs 20), the icon→text gap widened to
 # match the reference's airier text column (title ink at card+90 vs 66).
+# V0.6.84 (Round-4, logical-canvas calibration): the V0.6.77-82 numbers
+# were measured on the reference PNG's 1536-px raster — at the true
+# logical canvas (1000x667 = PNG / 1.536) the reference paints ~25-27 px
+# nav rows, ~80 px tool cards, ~12 px nav glyphs, ~16 px card glyphs and
+# a ~28 px arrow disc. The dashboard glyphs keep the heavier stroke.
 # The dashboard glyphs render at stroke 2.05 (the reference's icons read
 # visibly heavier than the 1.85 dialog default at the same size).
 _ICON_STROKE_DASH = 2.05
-_NAV_ITEM_HEIGHT = 37
-_NAV_ITEM_TALL = 45
-_ICON_SIZE_NAV = 21
+_NAV_ITEM_HEIGHT = 27
+_NAV_ITEM_TALL = 34
+_ICON_SIZE_NAV = 18
 # V0.6.83 (Round-3 §3.1): the compact-rail nav profile — smaller glyph,
 # tighter icon→text air; the LABEL word-wraps to two lines instead of
 # shrinking or clipping (spec §3.1: "Do not solve this by making navigation
 # text illegibly small or clipping labels").
-_ICON_SIZE_NAV_COMPACT = 19
-_ICON_SIZE_TOOL = 30
-_ARROW_SIZE = 18
-_ARROW_CIRCLE = 36
+_ICON_SIZE_NAV_COMPACT = 17
+_ICON_SIZE_TOOL = 24
+_ARROW_SIZE = 14
+_ARROW_CIRCLE = 28
 
-# V0.6.83 (Round-3 §4.3): the Quick Tool card's readability floor — the
-# narrowest card at which a two-column row still reads (2-line titles,
-# wrapped descriptions). The reflow decision in home_view pairs this with
-# the MEASURED single-line comfort width; see _relayout_quick_grid.
-_TOOL_CARD_FLOOR_W = 272
+# V0.6.84 (Round-4 §2.2): the compact card's readability floor — the
+# narrowest card at which a two-column row still reads (wrapped 2-line
+# titles, 2-line descriptions). The reflow decision in home_view pairs
+# this with the MEASURED single-line comfort width; see _relayout_quick_grid.
+_TOOL_CARD_FLOOR_W = 230
 
-# V0.6.83 (Round-3 §4.3): the card's horizontal chrome — kept in sync with
-# QuickToolCard.__init__ (margins 24+18, icon 30, arrow 36, two 18 px gaps).
+# V0.6.84 (Round-4 §2.2): the card's horizontal chrome — kept in sync with
+# QuickToolCard.__init__ (margins 11/9, icon 24, arrow 28, two 9 px gaps).
 # home_view's reflow adds the live-measured title width to this for the
-# single-line COMFORT width (the Round-3 three-column gate).
-_TOOL_CARD_CHROME_W = 24 + 18 + 30 + 36 + 2 * 18
+# single-line COMFORT width (the three-column gate).
+_TOOL_CARD_CHROME_W = 11 + 9 + 24 + 28 + 2 * 9
 
 
 class SectionLabel(QLabel):
@@ -150,14 +155,16 @@ class SidebarNavItem(QWidget):
         if lay is None:
             return
         if self._compact:
-            lay.setContentsMargins(9, 2, 9, 2)
-            lay.setSpacing(12)
+            lay.setContentsMargins(7, 1, 5, 1)
+            lay.setSpacing(8)
             self._icon_label.setFixedSize(_ICON_SIZE_NAV_COMPACT, _ICON_SIZE_NAV_COMPACT)
         else:
-            # V0.6.82: the reference's icon→label air — the label ink lands
-            # at rail x≈93 (icon box [50..71] + 22), matching x=93.
-            lay.setContentsMargins(12, 2, 12, 2)
-            lay.setSpacing(22)
+            # V0.6.84 (Round-4 §3.2): the reference's logical insets —
+            # icon ink at rail+18 (a 10 px host margin + 8 px item margin);
+            # the label column keeps every real tool name on ONE line at
+            # the 12 px label size on a 197 px rail.
+            lay.setContentsMargins(8, 1, 6, 1)
+            lay.setSpacing(9)
             self._icon_label.setFixedSize(_ICON_SIZE_NAV, _ICON_SIZE_NAV)
 
     def set_compact(self, compact: bool) -> None:
@@ -243,18 +250,18 @@ class _ArrowAffordance(QLabel):
         painter.setBrush(disc)
         painter.drawEllipse(0, 0, _ARROW_CIRCLE, _ARROW_CIRCLE)
         # chevron-right glyph, stroke ~2px
-        pen = QPen(glyph, 2.0)
+        pen = QPen(glyph, 1.8)
         pen.setCapStyle(Qt.PenCapStyle.RoundCap)
         pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
         painter.setPen(pen)
         # V0.6.82: the reference's arrow is a full arrow WITH A STEM (→),
         # not a bare chevron — the zoomed card comparison caught it.
         cx, cy = _ARROW_CIRCLE / 2, _ARROW_CIRCLE / 2
-        painter.drawLine(QPointF(cx - 8, cy), QPointF(cx + 5, cy))
+        painter.drawLine(QPointF(cx - 7, cy), QPointF(cx + 4, cy))
         path = QPainterPath()
-        path.moveTo(QPointF(cx - 1, cy - 6))
-        path.lineTo(QPointF(cx + 6, cy))
-        path.lineTo(QPointF(cx - 1, cy + 6))
+        path.moveTo(QPointF(cx - 1, cy - 5))
+        path.lineTo(QPointF(cx + 5, cy))
+        path.lineTo(QPointF(cx - 1, cy + 5))
         painter.drawPath(path)
         painter.end()
         self.setPixmap(
@@ -306,7 +313,10 @@ class QuickToolCard(QFrame):
         # tall (row bands measured [510..634]/[646..770]/[781..912] against
         # the previous 119-120) — the minimum rises so the rendered card
         # lands there (min + borders ≈ rendered).
-        self.setMinimumHeight(122)
+        # V0.6.84 (Round-4 §2.2): the compact card — the reference's true
+        # logical height is ~80 px (row bands [513..632]/[648..767]/[783..910]
+        # on the 1536-px raster = 78-83 logical), in the spec's 80-90 band.
+        self.setMinimumHeight(80)
         # V0.6.83 (Round-3 §4.3): the readability floor — the card never
         # narrows below a two-column-readable width on its OWN initiative;
         # the reflow's tier decision (home_view) enforces it against the
@@ -326,9 +336,14 @@ class QuickToolCard(QFrame):
         # so a three-column row at the 1440-wide composition keeps
         # single-line titles — the Round-2 28/20/24 chrome needed ~375 px
         # per card, and a 353 px Round-3 column wrapped the longest titles.
+        # V0.6.84 (Round-4 §2.2, logical calibration): the reference's
+        # compact card — icon ink at card+~15, title/desc column at card+~42
+        # (11 margin + 24 icon + 9 gap), the ~28 px arrow disc ~9 px from
+        # the right edge, 11 px vertical padding; descriptions align under
+        # the TITLE (the text column), as measured from the reference.
         lay = QHBoxLayout(self)
-        lay.setContentsMargins(24, 14, 18, 14)
-        lay.setSpacing(18)
+        lay.setContentsMargins(11, 11, 9, 11)
+        lay.setSpacing(9)
 
         self._icon_label = QLabel()
         self._icon_label.setFixedSize(_ICON_SIZE_TOOL, _ICON_SIZE_TOOL)
@@ -336,7 +351,7 @@ class QuickToolCard(QFrame):
 
         text_col = QVBoxLayout()
         text_col.setContentsMargins(0, 0, 0, 0)
-        text_col.setSpacing(4)
+        text_col.setSpacing(3)
         # V0.6.82: the reference's text block is VERTICALLY CENTERED in the
         # card (title ink at card+26, desc ink ending card−23; the old
         # trailing-only stretch pinned it to the top, leaving ~49 px of dead

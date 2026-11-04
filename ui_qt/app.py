@@ -231,11 +231,15 @@ class ElixirWindow(QMainWindow):
         (the reference's leaf + wordmark row); the top bar's left ~60% is
         intentionally empty in the reference, with the controls clustered
         right: the backend status pill, the labelled Settings action, a
-        subtle divider, the theme toggle, then the frameless window
-        controls (min / max-restore / close). The old header brand +
-        subtitle, Merge link, LLM lights and about button are all retired
-        from this bar (Merge + the audio tools live on in About & System;
-        the pill summarises the lights; About sits in the sidebar).
+        subtle divider, then the frameless window controls (min /
+        max-restore / close). The old header brand + subtitle, Merge link,
+        LLM lights and about button are all retired from this bar (Merge +
+        the audio tools live on in About & System; the pill summarises the
+        lights; About sits in the sidebar).
+
+        V0.6.84 (Round-4 §5): the moon theme toggle is retired from this
+        bar — the status strip's selector is the single visible theme
+        control ("One clear, fully functional theme selector").
 
         The empty bar area doubles as the window drag region (press to
         startSystemMove; double-click toggles maximise).
@@ -270,7 +274,7 @@ class ElixirWindow(QMainWindow):
         )
         self.backend_pill.clicked.connect(self._open_settings)
         lay.addWidget(self.backend_pill)
-        lay.addSpacing(28)
+        lay.addSpacing(26)
 
         # ── the labelled Settings action (gear + word) ────────────────
         self.settings_btn = QPushButton("Settings")
@@ -279,25 +283,21 @@ class ElixirWindow(QMainWindow):
         self.settings_btn.setToolTip("Open settings")
         self.settings_btn.clicked.connect(self._open_settings)
         lay.addWidget(self.settings_btn)
-        lay.addSpacing(22)
+        lay.addSpacing(20)
 
         # ── the subtle divider ────────────────────────────────────────
         divider = QFrame()
         divider.setObjectName("VDivider")
-        divider.setFixedHeight(36)
+        divider.setFixedHeight(30)
         lay.addWidget(divider)
-        lay.addSpacing(22)
-
-        # ── the theme toggle (moon in light, sun in dark) ─────────────
-        self.theme_btn = QPushButton()
-        self.theme_btn.setObjectName("IconBtn")
-        self.theme_btn.setCursor(Qt.PointingHandCursor)
-        self.theme_btn.setToolTip("Toggle dark / light theme")
-        self.theme_btn.clicked.connect(self._toggle_theme)
-        lay.addWidget(self.theme_btn)
-        lay.addSpacing(16)
+        lay.addSpacing(18)
 
         # ── the frameless window controls (V0.6.77) ───────────────────
+        # V0.6.84 (Round-4 §5): the top-bar moon theme toggle is REMOVED —
+        # the bottom status strip's "Light Theme ▾" selector is the ONE
+        # visible theme control (the duplicate was the Round-4 audit's
+        # "Two visible theme controls" finding). The spacing above
+        # redistributes naturally (28/22/22 → 26/20/18).
         # Real controls, not decoration: min/max-restore/close with the
         # reference's ~54 px pitch; the close hover gets the standard red.
         self.min_btn = QPushButton()
@@ -384,8 +384,8 @@ class ElixirWindow(QMainWindow):
 
     def _refresh_top_bar_icons(self) -> None:
         p = theme_manager.palette
-        # sun icon in dark mode (click → light), moon in light mode (click → dark)
-        self.theme_btn.setIcon(icon("sun" if p.is_dark else "moon", p.text_primary, 17))
+        # V0.6.84 (Round-4 §5): no theme glyph here any more — the ONE
+        # visible theme control is the status strip's selector.
         self.settings_btn.setIcon(icon("settings", p.text_secondary, 15))
         self.min_btn.setIcon(icon("minus", p.text_secondary, 15))
         self.max_btn.setIcon(
@@ -400,6 +400,8 @@ class ElixirWindow(QMainWindow):
             self._refresh_backend_pill()
 
     def _toggle_theme(self) -> None:
+        """The ONE theme-switch implementation (V0.6.84: driven by the
+        status strip's selector menu — the top-bar moon button is gone)."""
         theme_manager.toggle()
         self._refresh_top_bar_icons()
         self._refresh_status_strip()

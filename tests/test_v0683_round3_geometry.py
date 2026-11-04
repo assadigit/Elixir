@@ -142,7 +142,10 @@ class TestResponsiveRailSource:
     def test_rail_bounds_and_profile(self):
         code = _strip_comments(_src("ui_qt/components/sidebar.py"))
         assert "RAIL_MIN, RAIL_MAX = 180, 260" in code
-        assert "RAIL_COMPACT_BELOW = 232" in code
+        # V0.6.84 (Round-4 §3.2): the single-line profile reaches down to a
+        # 188 px rail (12 px labels + tight insets keep every real tool
+        # name on one line); the wrap profile engages only below it.
+        assert "RAIL_COMPACT_BELOW = 188" in code
         assert "def set_rail_width" in code
         assert "def _apply_profile" in code
 
@@ -182,16 +185,20 @@ class TestResponsiveRailLive:
             rail.set_rail_width(target)
             assert rail.width() == expect, (w, rail.width(), expect)
         # the compact profile tracks the RAIL_COMPACT_BELOW switch exactly
+        # (V0.6.84: the boundary moved 232 → 188 — the single-line profile
+        # now covers the 197 px rail a 1096-px window gets)
         rail.set_rail_width(RAIL_COMPACT_BELOW)
         assert rail._compact is False
         rail.set_rail_width(RAIL_COMPACT_BELOW - 1)
         assert rail._compact is True
         rail.set_rail_width(198)
-        assert rail._compact is True
+        assert rail._compact is False  # 198 ≥ 188: the single-line profile
         # the nav labels word-wrap (never clipped) — the item grows instead
+        # (V0.6.84: the compact row floor is the 27 px single-line height;
+        # a wrapped label still grows the row past it at layout time)
         item = rail._items["pdf_to_markdown"]
         assert item._text_label.wordWrap() is True
-        assert item.minimumHeight() >= 37
+        assert item.minimumHeight() >= 27
 
 
 # ════════════════════════════════════════════════════════════════════════
@@ -201,8 +208,11 @@ class TestQuickToolsTiersSource:
     def test_floor_and_chrome_constants(self):
         from ui_qt.components import dashboard_primitives as dp
 
-        assert dp._TOOL_CARD_FLOOR_W == 272
-        assert dp._TOOL_CARD_CHROME_W == 24 + 18 + 30 + 36 + 2 * 18
+        # V0.6.84 (Round-4 §2.2): the compact card — floor 230, chrome
+        # margins 11/9 + icon 24 + arrow 28 + two 9 px gaps (pin evolution
+        # from the Round-3 272/144 card).
+        assert dp._TOOL_CARD_FLOOR_W == 230
+        assert dp._TOOL_CARD_CHROME_W == 11 + 9 + 24 + 28 + 2 * 9
 
     def test_card_titles_wrap(self):
         code = _strip_comments(_src("ui_qt/components/dashboard_primitives.py"))
@@ -218,10 +228,13 @@ class TestQuickToolsTiersSource:
 
 class TestHeroRound3Source:
     def test_body_driven_height_rule(self):
+        # V0.6.84 (Round-4 §6/§8): ratio 0.36, clamp [192, 260] — the
+        # reference's logical-canvas hero (220 of a 580 body = 0.379);
+        # the Round-3 values (0.325/[240,336]) were raster-pixel derived.
         code = _strip_comments(_src("ui_qt/views/home_view.py"))
-        assert "_HERO_BODY_RATIO = 0.325" in code
-        assert "_HERO_MIN_H = 240" in code
-        assert "_HERO_MAX_H = 336" in code
+        assert "_HERO_BODY_RATIO = 0.36" in code
+        assert "_HERO_MIN_H = 192" in code
+        assert "_HERO_MAX_H = 260" in code
         assert "def _hero_target_h" in code
         assert "def _body_height" in code
 
@@ -240,9 +253,11 @@ class TestHeroRound3Source:
         assert "def _hero_text_need_w" in code
 
     def test_gap_in_band(self):
-        # §6: hero→tools gap 24–32; 28 lands mid-band.
+        # V0.6.84 (Round-4 §8): 12 — the reference's logical hero→heading
+        # air, keeping three compact rows on one page at the 1000×667
+        # reference canvas (pin evolution from Round-3's 28).
         code = _src("ui_qt/views/home_view.py")
-        assert re.search(r"root\.addSpacing\(28\)", code)
+        assert re.search(r"root\.addSpacing\(12\)", code)
 
     def test_chrome_heights_in_band(self):
         # §3.3/§6: header 44–52 (50), status strip 38–44 (42).

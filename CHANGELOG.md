@@ -31,6 +31,84 @@
 >    information invented; the commits remain the authoritative record.
 
 
+## V0.6.84 — UI/UX correction Round 4: the LOGICAL-CANVAS RECALIBRATION (the V0.6.78-82 rounds had measured the reference PNG's raster pixels and written them as logical-px constants — a systematic 1.536× inflation behind every remaining density defect), Manrope selected by real comparison (Inter retired; IBM Plex Sans wrapped the hero and the longest sidebar label), the compact 3×3 Quick Tools grid (80 px cards, comfort 235 / floor 230 / chrome 90 — three columns at BOTH the 1096×717 field window and the 1000×667 reference canvas with the page minimum under the viewport at each), the complete sidebar (27 px rows, single-line labels down to a 188 px rail, Settings/About in a FIXED lower region outside the scroll area, the compact 100 px tagline card with the full text visible, no scrollbar at the reference size), ONE theme control (the top-bar moon retired; the status-strip selector remains), the softer hero (wash alphas 22/17/13 right-shifted so the books stay the focal point, the bold display headline, the CTA arrow's reserved right inset that ends the constrained-size label collision), and the now5 evidence set at the repo root (light / dark / wide / constrained / overlay / difference)
+
+**Spec:** `ELIXIR_UI_UX_CORRECTION_ROUND_4.md` (the authoritative Round-4
+correction). **Root cause fixed:** every dashboard metric the V0.6.78–82
+rounds "ink-calibrated" was read off the reference PNG's 1536-px raster and
+shipped as a logical-px constant — the approved reference is a 1000×667
+logical canvas at 1.536×, so the dashboard rendered a size-and-a-half too
+big: 39 px headlines where the reference paints 26, 124 px cards where it
+paints 80, 37 px nav rows where it paints ~25, a 240 px hero floor where
+the reference composes 220. That inflation — not the window, not the grid
+code — is why the grid fell to two columns, why the nine nav rows
+overflowed the rail, and why the tagline clipped its own text. The V0.6.84
+constants are re-measured against the logical canvas (cap-height/ink
+verified per glyph band): headline 27 bold, support 14, card title 13,
+card desc 10, nav label 12, section head 17, wordmark 22, cards 80,
+nav rows 27, hero 0.36×body clamped [192, 260].
+
+**§6 Manrope (the selection):** both candidates rendered in the actual
+application at the field window and compared on the spec's criteria —
+Manrope kept the hero's exact two-line lockup and every sidebar label
+single-line with the reference's geometric editorial character; IBM Plex
+Sans wrapped the hero headline to three lines and wrapped "Document →
+Markdown" in the rail. Four static weights (instantiated from the official
+variable font with fonttools) bundle in `assets/fonts/` under SIL OFL 1.1,
+registered by `ui_qt.theme.load_bundle_font()` through
+`app_paths.bundle_dir()` (source and frozen builds both resolve), QSS
+stack `"Manrope" → "Segoe UI Variable" → "Segoe UI" → …`. Inter's TTFs
+are retired (one primary family; the m1 bundling pins evolved with it).
+
+**§2 the grid:** card minimum 80 (spec band 80–90; reference 78–83),
+insets 11/9/11/11, icon 24, arrow disc 28, gaps 10, page insets 16/18.
+Three columns hold at the field window (grid 865 ≥ 3×235+20) AND the
+1000×667 reference canvas (grid 744 ≥ 725), page minimum under the
+viewport at both (511 ≤ 579 / 495 ≤ 529 — no scrollbar); 2 columns at
+~900 px, 1 below the floor; the featured card keeps the dark forest
+treatment with its reference-verbatim description on two lines.
+
+**§3/§4 the sidebar:** nav rows 27 (Home 34), group spacings tightened,
+`RAIL_COMPACT_BELOW` 232 → 188 (the 12 px Manrope labels keep every real
+tool name single-line down to a 188 px rail — the field window's 197 px
+rail included); Settings/About move into a FIXED lower navigation region
+OUTSIDE the scroll area (never scrolled away); the tagline card compacts
+(12 px top inset, 46 px art strip, ~100 px) with the full tagline
+visible; live-verified: `verticalScrollBar().maximum() == 0` at the
+reference rail.
+
+**§5 one theme control:** the top-bar moon button is removed and the bar's
+spacing redistributed (26/20/18); the status strip's "Light Theme ▾"
+selector stays the single visible control (menu-driven, keyboard-operable,
+persistent — the engine untouched).
+
+**§7/§8 the hero:** the still-life remains a true transparent RGBA
+composite (re-verified both themes); the sage washes drop to 22/17/13
+alpha, right-shifted, so the books/quill own the frame; the headline
+becomes weight 700 (the reference's display ink); the CTA's painted arrow
+gets a reserved right inset (asymmetric padding — left floor 24, right
+floor 40) fixing the constrained-size "Conversio→n" collision.
+
+**Tests:** 30 new characterization tests
+(`tests/test_v0684_round4_density.py` — constants, source pins, live
+offscreen column checks at all three acceptance sizes, the no-scrollbar
+rail check, the single-line label measurement, the Manrope registration
+proof); documented pin evolutions in `test_m1_theme_tokens.py` (Inter →
+Manrope bundling + the logical-canvas FONT scale) and
+`test_v0683_round3_geometry.py` (RAIL_COMPACT_BELOW, the compact card
+constants, the Round-4 hero rule, the 12 px hero→tools air). ruff check +
+format clean; the full-suite tally is in the release commit (every failure
+a pre-existing sandbox issue reproducing identically on the untouched
+tree — zero regressions).
+
+**Evidence:** `now5.png` / `now5_dark.png` (the 1096×717 field window,
+light + dark), `now5_wide.png` (1440×900), `now5_constrained.png`
+(900×620, the deliberate 2-column transition), `now5_overlay.png` +
+`now5_difference.png` (the app's 1000×667 shell vs the reference,
+frame-matched). Structure at parity, measured at the matched shell:
+hero 220/220, grid-top 315/319, row-3 top 495/495, card gap 10/10.
+
+
 ## V0.6.83.1 — post-release CI hotfix: the Qt-enabled Test job no longer dies mid-suite — BOTH order-dependent crashes repaired (the m1 icon test's QGuiApplication was process-poison for every later widget test; the dialog tests' never-deleted top-level widgets segfaulted the interpreter at shutdown / the podcast e2e's ffmpeg fork), and the post-tag Qt-libs CI enablement is documented
 
 **Context (the post-tag `1a4a6dc`, previously documented only in its commit

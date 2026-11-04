@@ -4,9 +4,11 @@ M1 of the approved UI/UX redesign.  Design language:
   - Warm ivory / charcoal neutrals (never pure black) + a single muted
     **forest-green** accent with sage support — paper, ink, and a quiet
     reading room (per ELIXIR_FINAL_DASHBOARD_DESIGN_SPEC §3).
-  - **Inter** as the primary typeface — bundled in ``assets/fonts/`` since M1
-    (4 static weights, OFL), falling back to the best Windows-native stack
-    (Segoe UI Variable → Segoe UI).
+  - **Manrope** as the primary typeface (V0.6.84, Round-4 §6) — bundled in
+    ``assets/fonts/`` (4 static weights, OFL), falling back to the best
+    Windows-native stack (Segoe UI Variable → Segoe UI). Chosen over IBM
+    Plex Sans by the real-application comparison (headline wrap, card
+    density, nav legibility, character) — see release_notes/V0.6.84.md.
   - A single source of truth: the ``SPACE`` / ``FONT`` / ``RADIUS`` / ``WEIGHT``
     token scales.  Views import these instead of hard-coding magic numbers so
     the whole app stays visually consistent.
@@ -15,9 +17,18 @@ M1 of the approved UI/UX redesign.  Design language:
     type scale (``FONT.hero/section/tool/sidebar/body_lg``) for the M2
     hero / sidebar / quick-tool grid.
 
+V0.6.84 (Round-4 correction): the dashboard-facing type scale is
+re-calibrated to the approved reference's LOGICAL canvas. The V0.6.78–82
+rounds measured the reference PNG's raster pixels (1536×1024) and wrote
+them as logical-px constants — inflating every dashboard size by the
+image's 1.536× scale factor (a 39 px headline where the reference paints
+26, 124 px cards where it paints 80, 14.5 px nav labels where it paints
+~12.5). The Round-4 numbers below are the reference's true logical
+measurements (cap-height / ink-width verified per glyph band).
+
 The ThemeManager owns the palette, generates the complete QSS for the active
 mode (dark/light), persists the choice to
-``~/.elixir/ui_theme.json``, loads any bundled Inter weights, and
+``~/.elixir/ui_theme.json``, loads any bundled Manrope weights, and
 applies everything to a QApplication.
 """
 
@@ -64,8 +75,9 @@ SPACE = _ns(
 )
 
 # Font sizes (px).  Two scales, deliberately (user decision Q6):
-#   • Dialog scale (unchanged, compact): Inter renders crisply at 11px;
-#     Segoe UI fallback is fine too.  Wizard/settings/dialogs keep this.
+#   • Dialog scale (unchanged, compact): the bundled face renders
+#     crisply at 11px; the Segoe UI fallback is fine too.
+#     Wizard/settings/dialogs keep this.
 #   • Dashboard scale (M1 additions, spec §4): hero/section/tool/sidebar/
 #     body_lg feed the M2 hero, sidebar, and quick-tool grid.
 FONT = _ns(
@@ -88,22 +100,28 @@ FONT = _ns(
     # (×1.10), TOOLS label 48 vs 35 (×1.37); the brand wordmark was
     # OVER-sized (ink 101px vs the reference's 67 → 44 → 30) while the leaf
     # mark was under-sized (ink 23 vs 40 → glyph 26 → 44).
-    eyebrow=14,  # hero eyebrow (tracked uppercase; measured ink 11px both)
-    # V0.6.82 width-calibrated: the reference's support line inks are
-    # 495 px (L1) / 265 px (L2); Inter advances 597/335 at 22 px → the
-    # reference's effective size is ≈18 (the V0.6.76 "ascender 17px"
-    # reading was AA-inflated ink height, not glyph size).
-    body_lg=18,  # dashboard body / hero support copy
-    tool=17,  # quick-tool card titles (reference ink 119px vs 105 at 15px)
-    tool_desc=13,  # quick-tool card descriptions (reference ink ×1.13)
-    sidebar=14.5,  # sidebar nav labels (reference ink 103px vs 94 at 13px)
-    group=13,  # the sidebar's TOOLS label (reference ink 48px vs 35 at 10px)
-    section=20,  # "Quick Tools" — reference ink 126px ≈ the 20px render's 129
-    hero=41,  # hero heading (reference ascender ~30px, 2×46px lines)
-    brand=30,  # sidebar "Elixir" wordmark (reference ink 67px vs 101 at 44px)
+    # V0.6.84 (Round-4 correction, logical-canvas calibration): the
+    # V0.6.78-82 values (measured on the reference PNG's 1536-px raster)
+    # are re-derived against the reference's true LOGICAL canvas
+    # (1000x667 = the PNG / 1.536): card title cap 9.1 log, desc cap ~8,
+    # nav-label cap ~8.5, headline ascender ink 26 over 2x30 lines,
+    # support cap ~9.5, eyebrow cap 7.2, "Quick Tools" ~17, wordmark ink
+    # 44 wide. Manrope's generous x-height keeps every size legible at
+    # these numbers (x-height 6 px at 12 px).
+    eyebrow=10.5,  # hero eyebrow (tracked uppercase; reference cap ink 7.2 log)
+    body_lg=14,  # dashboard body / hero support copy (reference cap ~9.5 log)
+    tool=13,  # quick-tool card titles (reference cap 9.1 log -> ~12.7 px)
+    tool_desc=10,  # card descriptions (reference ~10.5 log; 10 keeps the
+    # featured card's reference-verbatim copy on TWO lines at 3 columns)
+    sidebar=12,  # sidebar nav labels (reference cap ~8.5 log)
+    group=11,  # the sidebar's TOOLS label (tracked uppercase)
+    section=17,  # "Quick Tools" section head (reference ~17 log)
+    hero=27,  # hero heading (reference ascender ink 26 log, 2x30 log lines)
+    brand=22,  # sidebar "Elixir" wordmark (reference ink 44 log wide)
 )
 
-# Font weights (Inter ships these; Segoe UI maps 500/600→SemiBold reasonably)
+# Font weights (the bundled Manrope ships these; Segoe UI maps
+# 500/600→SemiBold reasonably as the fallback)
 WEIGHT = _ns(regular=400, medium=500, semibold=600, bold=700)
 
 # Corner radii
@@ -115,9 +133,10 @@ RADIUS = _ns(xs=3, sm=5, md=6, lg=8, xl=10, nav=10, card=14, hero=16, shell=18)
 # Centralised here (M1) so views carry zero hardcoded colours.
 CODE_EDITOR = _ns(bg="#1E1E1E", text="#D4D4D4", border="#3C3C3C")
 
-# The canonical font-family stack.  Inter first (if loaded), then the best
-# Windows-native face, then cross-platform fallbacks.  Monospace for logs.
-FONT_FAMILY = '"Inter", "Segoe UI Variable", "Segoe UI", "Helvetica Neue", Arial, sans-serif'
+# The canonical font-family stack (V0.6.84, Round-4 section-6 selection):
+# Manrope first (the selected family — bundled, 4 weights, OFL), then the
+# best Windows-native face, then cross-platform fallbacks.  Monospace for logs.
+FONT_FAMILY = '"Manrope", "Segoe UI Variable", "Segoe UI", "Helvetica Neue", Arial, sans-serif'
 FONT_FAMILY_MONO = '"JetBrains Mono", "Cascadia Code", "Consolas", "Menlo", monospace'
 
 
@@ -258,19 +277,20 @@ def rgba(hex_color: str, alpha: float) -> str:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Inter font loading
+# Bundled font loading (V0.6.84: Manrope — the Round-4 section-6 selection)
 # ─────────────────────────────────────────────────────────────────────────────
 
-_INTER_FILES = (
-    "Inter-Regular.ttf",
-    "Inter-Medium.ttf",
-    "Inter-SemiBold.ttf",
-    "Inter-Bold.ttf",
+_BUNDLE_FONT_FILES = (
+    "Manrope-Regular.ttf",
+    "Manrope-Medium.ttf",
+    "Manrope-SemiBold.ttf",
+    "Manrope-Bold.ttf",
 )
 
 
-def load_inter(app: QApplication) -> list[str]:
-    """Register bundled Inter weights from ``assets/fonts/`` if present.
+def load_bundle_font(app: QApplication) -> list[str]:
+    """Register the bundled primary typeface's weights (V0.6.84: Manrope,
+    the Round-4 section-6 selection) from ``assets/fonts/`` if present.
 
     Returns the list of family names that were successfully added (may be
     empty if the font files aren't installed yet — the stylesheet then
@@ -281,10 +301,10 @@ def load_inter(app: QApplication) -> list[str]:
     asset, the prompts) — instead of ``Path(__file__).parent.parent``. From
     source both resolve to the repository root, but in a frozen
     PyInstaller build the module path is synthesized and the bundle root
-    is the ONLY reliable anchor: if Inter silently fails to register, the
-    QSS stack falls back to Segoe UI, whose wider metrics overflow the
-    dashboard's fixed reflow thresholds (the compiled-Windows "not enough
-    space" reports).
+    is the ONLY reliable anchor: if the family silently fails to register,
+    the QSS stack falls back to Segoe UI, whose wider metrics overflow the
+    dashboard's measured reflow thresholds (the compiled-Windows "not
+    enough space" reports).
     """
     from app_paths import bundle_dir
 
@@ -292,7 +312,7 @@ def load_inter(app: QApplication) -> list[str]:
     families: list[str] = []
     if not fonts_dir.is_dir():
         return families
-    for name in _INTER_FILES:
+    for name in _BUNDLE_FONT_FILES:
         fp = fonts_dir / name
         if fp.exists() and fp.stat().st_size > 1000:
             fid = QFontDatabase.addApplicationFont(str(fp))
@@ -418,7 +438,7 @@ def _qss(p: Palette) -> str:
         color: {p.text_secondary};
         border: none;
         border-radius: {RADIUS.sm}px;
-        padding: 6px 10px;
+        padding: 5px 9px;
         font-size: {FONT.sidebar}px; font-weight: {WEIGHT.medium};
         outline: none;
     }}
@@ -510,15 +530,15 @@ def _qss(p: Palette) -> str:
        (visual-fidelity pass): sizes retuned to the reference measurements
        — hero 41 px semibold, support 20 px, section 20 px, tool 15 px. */
     QLabel#Hero {{
-        font-size: {FONT.hero}px; font-weight: {WEIGHT.semibold};
+        font-size: {FONT.hero}px; font-weight: {WEIGHT.bold};
         color: {p.text_primary};
     }}
     QLabel#Eyebrow {{
         font-size: {FONT.eyebrow}px; font-weight: {WEIGHT.semibold};
         color: {p.sage};
-        /* V0.6.82: width-calibrated — the reference's eyebrow ink is
-           145 px vs 166 at 1.6 px tracking; ~0.4 px lands it there. */
-        letter-spacing: 0.4px;
+        /* V0.6.84: the tracked uppercase eyebrow keeps its rhythm at the
+           Round-4 logical size (reference ink 80 log wide). */
+        letter-spacing: 0.6px;
     }}
     QLabel#Support {{
         font-size: {FONT.body_lg}px; font-weight: {WEIGHT.regular};
@@ -544,9 +564,9 @@ def _qss(p: Palette) -> str:
         font-size: {FONT.group}px; font-weight: {WEIGHT.semibold};
         color: {p.text_secondary};
         letter-spacing: 0.8px;
-        /* V0.6.82: aligns the TOOLS label with the icon boxes' left edge
-           (reference x=50, measured vs the old x=40). */
-        padding-left: 12px;
+        /* V0.6.84 (Round-4): aligns the TOOLS label with the icon boxes'
+           left edge — nav host margin 10 + item margin 8. */
+        padding-left: 8px;
     }}
     QLabel#BrandWord {{
         font-size: {FONT.brand}px; font-weight: {WEIGHT.semibold};
@@ -629,9 +649,12 @@ def _qss(p: Palette) -> str:
         background-color: transparent;
         color: {p.text_on_accent};
         border: none;
-        border-radius: 27px;
-        padding: 15px 48px;
-        font-size: 16px; font-weight: {WEIGHT.semibold};
+        border-radius: 19px;
+        /* V0.6.84 (Round-4, logical calibration): the reference's capsule
+           is ~168x37 log — the base rhythm shrinks with the hero scale
+           pass (home_view._scale_hero_typography retunes this padding). */
+        padding: 10px 36px;
+        font-size: 13px; font-weight: {WEIGHT.semibold};
         outline: none;
     }}
     QPushButton#HeroPrimary:disabled {{
@@ -645,8 +668,8 @@ def _qss(p: Palette) -> str:
         background-color: {p.bg_surface};
         color: {p.text_primary};
         border: 1px solid {p.border};
-        border-radius: 18px;
-        padding: 7px 16px;
+        border-radius: 14px;
+        padding: 5px 12px;
         font-size: {FONT.sidebar}px; font-weight: {WEIGHT.medium};
         outline: none;
     }}
@@ -663,8 +686,8 @@ def _qss(p: Palette) -> str:
         color: {p.text_secondary};
         border: none;
         border-radius: {RADIUS.sm}px;
-        min-width: 34px; min-height: 30px;
-        max-width: 34px; max-height: 30px;
+        min-width: 32px; min-height: 28px;
+        max-width: 32px; max-height: 28px;
         font-size: {FONT.body}px;
         outline: none;
     }}
@@ -680,8 +703,8 @@ def _qss(p: Palette) -> str:
         color: {p.text_secondary};
         border: none;
         border-radius: {RADIUS.sm}px;
-        min-width: 34px; min-height: 30px;
-        max-width: 34px; max-height: 30px;
+        min-width: 32px; min-height: 28px;
+        max-width: 32px; max-height: 28px;
         font-size: {FONT.body}px;
         outline: none;
     }}
@@ -723,12 +746,13 @@ def _qss(p: Palette) -> str:
     QPushButton#ViewAllLink:hover {{
         color: {p.accent};
     }}
-    /* V0.6.76: the sidebar nav rows — the reference's ~37 px rows with a
-       10 px radius and the pale-sage active pill. */
+    /* The sidebar nav rows (V0.6.84: ~27 px rows — the reference's ~25
+       pitch at the logical canvas) with a 8 px radius and the pale-sage
+       active pill. Heights/margins live in the primitives module. */
     QWidget#SidebarNavItem {{
         background: transparent;
         border: none;
-        border-radius: {RADIUS.nav}px;
+        border-radius: 8px;
     }}
     QWidget#SidebarNavItem:hover {{
         background: {rgba(p.text_primary, 0.05)};
@@ -1149,8 +1173,8 @@ def _qss(p: Palette) -> str:
 class ThemeManager:
     """Owns the active palette, generates QSS, persists the user's choice.
 
-    V7.4.0: loads bundled Inter weights on first apply; the stylesheet falls
-    back to Segoe UI Variable / Segoe UI when Inter is absent.
+    V7.4.0: loads the bundled primary weights on first apply; the stylesheet
+    falls back to Segoe UI Variable / Segoe UI when the family is absent.
     """
 
     def __init__(self) -> None:
@@ -1162,7 +1186,7 @@ class ThemeManager:
         self.settings_file.parent.mkdir(parents=True, exist_ok=True)
         self._mode: str = self._load_mode()
         self._app: QApplication | None = None
-        self._inter_loaded: bool = False
+        self._font_loaded: bool = False
 
     # ── persistence ──────────────────────────────────────────────────────
     def _load_mode(self) -> str:
@@ -1198,8 +1222,8 @@ class ThemeManager:
         return PALETTES[mode]
 
     @property
-    def inter_loaded(self) -> bool:
-        return self._inter_loaded
+    def font_loaded(self) -> bool:
+        return self._font_loaded
 
     # ── application ──────────────────────────────────────────────────────
     def apply(self, app: QApplication, mode: str | None = None) -> None:
@@ -1207,13 +1231,13 @@ class ThemeManager:
         self._app = app
         if mode is not None:
             self._mode = mode
-        # one-shot Inter registration
-        if not self._inter_loaded:
+        # one-shot bundled-family registration (V0.6.84: Manrope)
+        if not self._font_loaded:
             try:
-                fams = load_inter(app)
-                self._inter_loaded = bool(fams)
+                fams = load_bundle_font(app)
+                self._font_loaded = bool(fams)
             except Exception:
-                self._inter_loaded = False
+                self._font_loaded = False
         p = self.palette
 
         pal = QPalette()
