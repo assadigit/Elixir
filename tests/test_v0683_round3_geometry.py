@@ -217,7 +217,8 @@ class TestQuickToolsTiersSource:
         # (three columns now reach the app's own 1100×720 minimum window)
         # and the chrome re-measures to the compact insets.
         assert dp._TOOL_CARD_FLOOR_W == 240
-        assert dp._TOOL_CARD_CHROME_W == 16 + 14 + 24 + 30 + 2 * 12
+        # V0.6.84.1: 110 → 97 (see test_v0684_round4_density).
+        assert dp._TOOL_CARD_CHROME_W == 13 + 10 + 24 + 30 + 2 * 10
 
     def test_card_titles_wrap(self):
         code = _strip_comments(_src("ui_qt/components/dashboard_primitives.py"))

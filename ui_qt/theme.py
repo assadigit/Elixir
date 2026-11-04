@@ -99,7 +99,11 @@ FONT = _ns(
     body_lg=18,  # dashboard body / hero support copy (scales with the hero)
     tool=14,  # quick-tool card titles (compact: single-line at ≥150px cols)
     tool_desc=11.5,  # quick-tool card descriptions (dialog-body legibility)
-    sidebar=13,  # sidebar nav labels (compact rows; ~0.9× the V0.6.82 ink)
+    sidebar=12,  # sidebar nav labels (V0.6.84.1: 13 → 12 — at 13 px the longest
+    # real tool name ('Document → Markdown' = 141 px) missed the
+    # 133 px label column a 197 px rail offers and wrapped to two
+    # lines at the user's field window; at 12 px it measures 130 px
+    # and stays single-line, the reference's treatment)
     group=11,  # the sidebar's TOOLS label
     section=18,  # "Quick Tools" heading (compact band)
     hero=41,  # hero heading (the per-widget scaler owns the live size)

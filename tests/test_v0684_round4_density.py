@@ -123,7 +123,10 @@ class TestCardDensitySource:
         'smaller internal padding than the current implementation'."""
         from ui_qt.components import dashboard_primitives as dp
 
-        assert dp._TOOL_CARD_CHROME_W == 16 + 14 + 24 + 30 + 2 * 12
+        # V0.6.84.1: the chrome tightens 110 → 97 (margins 13/10,
+        # gaps 10) so the featured card's reference-verbatim description
+        # keeps TWO lines at the field window (spec §2.2).
+        assert dp._TOOL_CARD_CHROME_W == 13 + 10 + 24 + 30 + 2 * 10
         assert dp._ICON_SIZE_TOOL == 24
         assert dp._ARROW_CIRCLE == 30
 
@@ -138,7 +141,9 @@ class TestCardDensitySource:
         assert "def _card_target_h" in code
         assert "def _apply_grid_density" in code
         assert "title_px = round(13 + 4 * s, 1)" in code
-        assert "desc_px = round(11 + 2 * s, 1)" in code
+        # V0.6.84.1: the desc band drops its floor 11 → 10 (paired with
+        # the tightened chrome for the featured card's two-line break)
+        assert "desc_px = round(10 + 3 * s, 1)" in code
 
 
 # ════════════════════════════════════════════════════════════════════════

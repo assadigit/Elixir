@@ -819,8 +819,12 @@ class HomeView(QWidget):
             return
         self._card_h = h
         s = (h - _CARD_H_MIN) / (_CARD_H_MAX - _CARD_H_MIN)
+        # V0.6.84.1: the desc band drops its floor 11 → 10 — with the
+        # tightened chrome (97 px) the featured card's two-line break
+        # needs 160 px and gets 162 at the field window, but only while
+        # the desc stays at/below the compact floor's metrics.
         title_px = round(13 + 4 * s, 1)
-        desc_px = round(11 + 2 * s, 1)
+        desc_px = round(10 + 3 * s, 1)
         for card in getattr(self, "_quick_cards", []) or []:
             card.setMinimumHeight(h)
             card.set_density(title_px, desc_px)
@@ -981,7 +985,22 @@ class HomeView(QWidget):
         # keeps the intended 2-line wrap tuning as the column narrows.
         col = max(160, self.width() - 90)
         self._hero_heading.setMaximumWidth(max(200, min(round(545 * scale), col)))
-        self._hero_support.setMaximumWidth(max(190, min(round(520 * scale), col)))
+        # V0.6.84.1 (Round-4 follow-up): the support cap is FLOORED at the
+        # pinned first line's measured advance — the V0.6.81 hard newline
+        # ("…summarized, organized\nand ready…") only renders as the
+        # reference's two lines while the cap can hold line 1 whole; at
+        # the field window the scaled cap (325 px) sat 6 px under the
+        # 13 px line (331 px) and the label re-wrapped into a ragged
+        # three lines with "organized" orphaned. When the column itself
+        # is narrower than the line, the cap stays at the column (the
+        # wrap is then unavoidable and word-level, never a clip).
+        support = getattr(self, "_hero_support", None)
+        if support is not None:
+            l1 = support.fontMetrics().horizontalAdvance(
+                "Books, articles and documents — summarized, organized"
+            )
+            support_cap = max(190, min(round(520 * scale), col))
+            support.setMaximumWidth(max(support_cap, min(l1 + 4, col)))
         state = (
             hero_px,
             support_px,

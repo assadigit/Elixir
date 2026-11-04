@@ -31,6 +31,16 @@
 >    information invented; the commits remain the authoritative record.
 
 
+## V0.6.84.1 — the Round-4 polish: three wrap defects fixed at the user's field window (the sidebar's longest tool name back on ONE line — FONT.sidebar 13→12 + tightened nav insets, the column 139 px vs the label's 130; the hero support's pinned two-line break restored — the width cap now floors at the pinned first line's measured advance so "organized" is never orphaned; the featured card's description back on TWO lines — the card chrome 110→97 px + the desc band's floor 11→10 px), the architecture/typeface/reflow untouched, the full functional sweep re-run clean, and the now5 evidence set regenerated
+
+**Spec follow-up:** `ELIXIR_UI_UX_CORRECTION_ROUND_4.md` §2.2
+("Descriptions should occupy no more than two lines"), §3.2 ("Prefer the
+single-line treatment shown in the reference"), and the V0.6.81 pinned
+hero-break contract. Each defect was found by re-reviewing the shipped
+V0.6.84 build at the user's exact 1096×717 field window; each fix is
+live-verified (measured widths before/after) and rendered in both themes.
+
+
 ## V0.6.84 — UI/UX correction Round 4: the compact three-column dashboard at the user's real window (the floor-driven Quick Tools reflow — 3 columns now reach the app's own 1100×720 minimum; the card density band 84–122 px with typography that scales 13/11 → 17/13), the three-region sidebar (scroll-free primary nav, FIXED lower Settings/About, compact fully-readable tagline card — no internal scrollbar at the user's rail), exactly ONE theme control (the status strip's Light/Dark selector; the top-bar moon removed), IBM Plex Sans as the bundled primary typeface (selected over Manrope by the spec §6.3 in-app comparison, replacing Inter), the dark-theme hero-ink fix, and the Round-4 evidence set (now5*.png)
 
 **The correction spec behind this release:** the Round-4 audit

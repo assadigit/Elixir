@@ -78,7 +78,7 @@ _TOOL_CARD_FLOOR_W = 240
 # home_view's reflow adds the live-measured title width to this when it
 # needs the single-line comfort width (the informational ceiling, no
 # longer the Round-3 three-column gate — see _relayout_quick_grid).
-_TOOL_CARD_CHROME_W = 16 + 14 + 24 + 30 + 2 * 12
+_TOOL_CARD_CHROME_W = 13 + 10 + 24 + 30 + 2 * 10
 
 
 class SectionLabel(QLabel):
@@ -162,15 +162,22 @@ class SidebarNavItem(QWidget):
         if lay is None:
             return
         if self._compact:
-            lay.setContentsMargins(8, 1, 8, 1)
-            lay.setSpacing(10)
+            # V0.6.84.1 (Round-4 §3.2 follow-up): tightened so the 12 px
+            # labels keep the longest real tool name on ONE line down to a
+            # 188 px rail — the label column on a 197 px rail is 137 px
+            # against 'Document → Markdown' at 130 px (at the V0.6.84
+            # insets it offered 133 px against 141 px at 13 px — a wrap at
+            # the user's field window).
+            lay.setContentsMargins(7, 1, 6, 1)
+            lay.setSpacing(9)
             self._icon_label.setFixedSize(_ICON_SIZE_NAV_COMPACT, _ICON_SIZE_NAV_COMPACT)
         else:
-            # V0.6.84 (Round-4 compact density): tighter icon→label air at
-            # the 13 px label size (the V0.6.82 22 px gap was tuned for the
-            # 14.5 px label against the 1536 reference).
-            lay.setContentsMargins(10, 1, 10, 1)
-            lay.setSpacing(14)
+            # V0.6.84 (Round-4 compact density): tighter icon→label air.
+            # V0.6.84.1: retuned for the 12 px label (spacing 14 → 11,
+            # margins 10 → 9/8) — the wide profile's label column starts
+            # at 164 px on the 232 px rail it engages on.
+            lay.setContentsMargins(9, 1, 8, 1)
+            lay.setSpacing(11)
             self._icon_label.setFixedSize(_ICON_SIZE_NAV, _ICON_SIZE_NAV)
 
     def set_compact(self, compact: bool) -> None:
@@ -356,14 +363,19 @@ class QuickToolCard(QFrame):
         # so a three-column row at the 1440-wide composition keeps
         # single-line titles — the Round-2 28/20/24 chrome needed ~375 px
         # per card, and a 353 px Round-3 column wrapped the longest titles.
-        # V0.6.84 (Round-4 §2.2): the COMPACT insets (16/12/14/12, gap 12,
-        # icon 24, arrow 30) — "smaller internal padding than the current
-        # implementation" per the spec; with the 14 px title the chrome
-        # totals 108 px (was 144), which is what lets three columns fit
-        # the ~790 px grid the user's real window offers.
+        # V0.6.84 (Round-4 §2.2): the COMPACT insets — "smaller internal
+        # padding than the current implementation" per the spec; the chrome
+        # is what lets three columns fit the ~790 px grid the user's real
+        # window offers.
+        # V0.6.84.1 (Round-4 §2.2 follow-up): the insets tighten one more
+        # notch (16/12/14/12 gap 12 → 13/11/10/11 gap 10; chrome 110 → 97)
+        # so the featured card's reference-verbatim description keeps TWO
+        # lines at the field window (its second line needs 160 px; the
+        # 110-px chrome left 149 and it wrapped to three — the spec's
+        # "Descriptions should occupy no more than two lines").
         lay = QHBoxLayout(self)
-        lay.setContentsMargins(16, 12, 14, 12)
-        lay.setSpacing(12)
+        lay.setContentsMargins(13, 11, 10, 11)
+        lay.setSpacing(10)
 
         self._icon_label = QLabel()
         self._icon_label.setFixedSize(_ICON_SIZE_TOOL, _ICON_SIZE_TOOL)

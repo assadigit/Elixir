@@ -249,7 +249,9 @@ class TestQssTemplatePins:
         assert font["section"] == 18
         assert font["tool"] == 14
         assert font["tool_desc"] == 11.5
-        assert font["sidebar"] == 13
+        # V0.6.84.1: 13 → 12 — the longest tool name stays single-line
+        # on the field window's rail (spec §3.2)
+        assert font["sidebar"] == 12
         assert font["group"] == 11
         assert font["body_lg"] == 18
         assert font["eyebrow"] == 14

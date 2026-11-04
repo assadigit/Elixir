@@ -403,7 +403,10 @@ class Sidebar(QFrame):
         # controls") while Regions 2+3 stay pinned.
         nav_host = QWidget()
         nav = QVBoxLayout(nav_host)
-        nav.setContentsMargins(14, 2, 14, 6)
+        # V0.6.84.1: 14 → 12 — two more px for the label column (with the
+        # 12 px labels + tightened item insets the longest tool name now
+        # stays single-line down to the 188 px rail a 1042-px window gets)
+        nav.setContentsMargins(12, 2, 12, 6)
         nav.setSpacing(1)
         self._nav_host_lay = nav
         for group_label, items in NAV_GROUPS:
@@ -518,7 +521,7 @@ class Sidebar(QFrame):
         else:
             self._brand_word.setStyleSheet("background: transparent;")
         # ── the nav host + items ───────────────────────────────────────
-        self._nav_host_lay.setContentsMargins(*(11, 2, 11, 6) if compact else (14, 2, 14, 6))
+        self._nav_host_lay.setContentsMargins(*(10, 2, 10, 6) if compact else (12, 2, 12, 6))
         for item in self._items.values():
             item.set_compact(compact)
 
