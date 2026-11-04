@@ -388,6 +388,16 @@ class QuickToolCard(QFrame):
         # card (title ink at card+26, desc ink ending card−23; the old
         # trailing-only stretch pinned it to the top, leaving ~49 px of dead
         # air under the description).
+        # V0.6.85 (Round-5 §3): the two bookend stretches carry EQUAL
+        # factors — the old pair was addStretch(1) over addStretch() (factors
+        # 1 and 0), so Qt gave ALL the extra card height to the TOP spacer
+        # and pushed the title/description block toward the card's bottom
+        # edge while the icon and arrow stayed centered (the audit's "text/
+        # icon grouping is not vertically centered consistently"). Equal
+        # factors split the slack evenly: the group now sits on the same
+        # optical midline as the glyph and the arrow disc. The labels keep
+        # their default left alignment (the reference's left-aligned text;
+        # "middle alignment" is VERTICAL centering only, spec §3).
         text_col.addStretch(1)
         self._title_label = QLabel(title)
         self._title_label.setObjectName("ToolTitle")
@@ -405,10 +415,16 @@ class QuickToolCard(QFrame):
             text_col.addWidget(self._desc_label)
         else:
             self._desc_label = None
-        text_col.addStretch()
+        text_col.addStretch(1)
         lay.addLayout(text_col, 1)
 
-        lay.addWidget(self._arrow, 0, Qt.AlignmentFlag.AlignVCenter)
+        # V0.6.85 (Round-5 §3): the arrow is RIGHT-aligned INDEPENDENTLY of
+        # the text block (AlignVCenter | AlignRight) — a fixed-size widget
+        # with no horizontal flag is placed at its cell's LEFT edge, which
+        # left the disc a hair (1 px) short of the right inset whenever the
+        # grid's column division rounded the cell wider. With the explicit
+        # flag the disc hugs the card's right inset at EVERY column width.
+        lay.addWidget(self._arrow, 0, Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight)
 
         self._apply_style()
 

@@ -240,9 +240,11 @@ class TestPrimaryTypeface:
 
     def test_hero_washes_step_back(self):
         """§7: the decorative circles' alphas drop so the still-life is
-        the focal point."""
+        the focal point. V0.6.85 (Round-5 §7) supersedes the V0.6.84
+        values: 24/18/14 → 14/10/7 (one more measured retreat — the
+        reference's circles read as barely-there ground tints)."""
         code = _strip_comments(_src("ui_qt/views/home_view.py"))
-        assert "(h * 1.62, 24), (h * 1.14, 18), (h * 0.70, 14)" in code
+        assert "(h * 1.62, 14), (h * 1.14, 10), (h * 0.70, 7)" in code
 
     def test_cta_arrow_scales_with_the_hero(self):
         """The Round-4 'Conversion➜' collision fix: the arrow's

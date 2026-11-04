@@ -4,11 +4,17 @@ The 488-line local-backend / model-architecture / model-picker section
 moved VERBATIM from ``ui_qt/settings/sections.py`` during the V0.4.19
 de-monolithization — body byte-identical; only this docstring and the
 re-homed imports (the async model helpers via ``.helpers``) are new.
+
+V0.6.85 (Round-5 §4.2): the section gains the app's provider-selection
+home role — the header's backend pill is retired, so THIS picker (plus
+the API tab) is where local/API provider selection lives. A one-shot
+"Test connection" row (async, worker-thread — the W-b11 pattern) gives
+the section its connection-test action.
 """
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Slot
 from PySide6.QtWidgets import (
     QComboBox,
     QGroupBox,
@@ -22,6 +28,7 @@ from PySide6.QtWidgets import (
 from controller import Controller
 from core.system.timeouts import UI_PROBE_TIMEOUT_S
 from ui_qt.components.icons import icon
+from ui_qt.components.simple_worker import SimpleWorker
 from ui_qt.settings.widgets import labeled_line, make_form
 from ui_qt.theme import theme_manager
 
@@ -51,7 +58,9 @@ class AiLocalModelSection(QGroupBox):
             "Best for RTX 3060 12GB with Gemma 4 12B."
         )
         local_desc.setWordWrap(True)
-        local_desc.setStyleSheet(f"color: {theme_manager.palette.text_secondary}; font-size: 11px; padding: 2px 0 6px 0;")
+        local_desc.setStyleSheet(
+            f"color: {theme_manager.palette.text_secondary}; font-size: 11px; padding: 2px 0 6px 0;"
+        )
         f.addRow("", local_desc)
 
         # ── backend picker ──────────────────────────────────────────────
@@ -109,6 +118,33 @@ class AiLocalModelSection(QGroupBox):
         w_row.addWidget(self.workers_slider)
         w_row.addWidget(self.workers_label)
         f.addRow("Parallel workers", w_row)
+
+        # ── the one-shot connection test (V0.6.85, Round-5 §4.2) ───────
+        # With the header pill retired, provider selection lives HERE —
+        # so the section carries its own "Connection test … action": a
+        # single async probe of the CURRENT picker selection (the same
+        # transports the status strip's state model uses; never a block —
+        # the W-b11 SimpleWorker pattern, disabled while in flight and
+        # re-enabled in BOTH outcome handlers).
+        conn_row = QHBoxLayout()
+        conn_row.setContentsMargins(0, 0, 0, 0)
+        conn_row.setSpacing(8)
+        self.test_btn = QPushButton("  Test connection")
+        self.test_btn.setObjectName("Compact")
+        self.test_btn.setIcon(icon("refresh", theme_manager.palette.icon, 15))
+        self.test_btn.setToolTip(
+            "Verify the selected backend is reachable and the model is available\n"
+            "(one real probe, run off the UI thread)"
+        )
+        self.test_btn.clicked.connect(self._test_connection)
+        conn_row.addWidget(self.test_btn)
+        self.test_label = QLabel("")
+        self.test_label.setWordWrap(True)
+        self.test_label.setStyleSheet(
+            f"color: {theme_manager.palette.text_secondary}; background: transparent; font-size: 10px;"
+        )
+        conn_row.addWidget(self.test_label, 1)
+        f.addRow("", conn_row)
 
         self.setLayout(f)
         # V18.20.4.5 (W-b11): worker ref for the async model fetch (a
@@ -235,6 +271,64 @@ class AiLocalModelSection(QGroupBox):
             models,
             current=self.controller.get_setting("summarisation.model", ""),
         )
+
+    # ── the one-shot connection test (V0.6.85, Round-5 §4.2) ──────────
+    def _test_connection(self) -> None:
+        """Probe the CURRENT picker selection on a background worker; the
+        result marshals back via a queued slot (the llamacpp_config
+        W-b11/W-b18 pattern — a raising probe re-enables the button)."""
+        from core.system.backend_connection import test_local_backend_connection
+
+        backend = self.backend_combo.currentText()
+        model = self.summary_combo.currentText() or ""
+        custom_url = self.custom_url.text().strip()
+        # The llama.cpp endpoints are SETTINGS-owned (shared with the wizard
+        # + provider) — snapshotted on the MAIN thread, per DESIGN RULE 2.
+        llamacpp_base = ""
+        llamacpp_key = ""
+        if backend == "llama.cpp server":
+            llamacpp_base = str(
+                self.controller.get_setting(
+                    "summarisation.llamacpp_base_url", "http://127.0.0.1:8080/v1"
+                )
+                or ""
+            )
+            llamacpp_key = str(
+                self.controller.get_secret("summarisation.llamacpp_api_key", "local") or "local"
+            )
+        self.test_btn.setEnabled(False)
+        self.test_label.setText("Testing…")
+        self.test_label.setStyleSheet(
+            f"color: {theme_manager.palette.text_secondary}; background: transparent; font-size: 10px;"
+        )
+
+        def _run() -> tuple[bool, str]:
+            return test_local_backend_connection(
+                backend, model, custom_url, llamacpp_base, llamacpp_key
+            )
+
+        w = SimpleWorker(_run)
+        self._test_worker = w  # Python ref (GC hazard, W-b11 pattern)
+        w.finished.connect(self._on_test_finished)
+        w.failed.connect(self._on_test_failed)
+        w.start()
+
+    @Slot(object)
+    def _on_test_finished(self, result) -> None:
+        ok, msg = result if isinstance(result, tuple) else (False, str(result))
+        self._apply_test_result(ok, msg)
+
+    @Slot(str)
+    def _on_test_failed(self, error: str) -> None:
+        self._apply_test_result(False, error)
+
+    def _apply_test_result(self, ok: bool, msg: str) -> None:
+        p = theme_manager.palette
+        self.test_label.setText(("✅ " if ok else "❌ ") + msg)
+        self.test_label.setStyleSheet(
+            f"color: {p.success if ok else p.error}; background: transparent; font-size: 10px;"
+        )
+        self.test_btn.setEnabled(True)
 
     # ── save / reload ────────────────────────────────────────────────────
     def save(self) -> None:

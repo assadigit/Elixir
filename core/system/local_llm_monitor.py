@@ -97,7 +97,15 @@ class LocalLLMEndpoints:
 class LocalLLMStatus:
     """The liveness verdict for ONE client — everything the light and its
     tooltip render. ``detail`` is one short human line; ``probed`` lists
-    the endpoints that were tried (the llama.cpp port order evidence)."""
+    the endpoints that were tried (the llama.cpp port order evidence).
+
+    V0.6.85 (Round-5 §5): ``models`` carries the endpoint's model
+    listing when the probe fetched one (Ollama ``/api/tags``, the
+    OpenAI-shaped ``/v1/models``) — the evidence the connection-state
+    model needs to distinguish "reachable" from "the selected model is
+    actually usable". Empty means "not verifiable" (older llama.cpp
+    builds serve no ``/v1/models``), never "no models".
+    """
 
     key: str
     name: str
@@ -105,6 +113,7 @@ class LocalLLMStatus:
     detail: str
     endpoint: str
     probed: tuple[str, ...] = field(default_factory=tuple)
+    models: tuple[str, ...] = field(default_factory=tuple)
 
     @property
     def tooltip(self) -> str:
@@ -179,6 +188,7 @@ def _probe_ollama(spec: LocalLLMEndpoints) -> LocalLLMStatus:
                 ),
                 endpoint=url,
                 probed=(url,),
+                models=tuple(models),
             )
     except Exception:
         logger.debug("ollama liveness probe exploded", exc_info=True)
@@ -224,6 +234,7 @@ def _probe_llamacpp_client(spec: LocalLLMEndpoints) -> LocalLLMStatus:
                     detail=f"running{auto} · serving {models[0]} @ {base}",
                     endpoint=base,
                     probed=tuple(probed),
+                    models=tuple(models),
                 )
     except Exception:
         logger.debug("llama.cpp liveness probe exploded", exc_info=True)
@@ -252,6 +263,7 @@ def _probe_lmstudio(spec: LocalLLMEndpoints) -> LocalLLMStatus:
                 detail=f"running · serving {models[0]} @ {url}",
                 endpoint=url,
                 probed=(url,),
+                models=tuple(models),
             )
     except Exception:
         logger.debug("lm studio liveness probe exploded", exc_info=True)

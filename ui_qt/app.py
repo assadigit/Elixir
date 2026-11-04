@@ -1,8 +1,9 @@
 """Main application window — slim top bar + fixed sidebar + stacked pages.
 
   ┌──────────────────────────────────────────────────────────────────────┐
-  │  ◆ Elixir ·  PDF → Markdown + Summaries        ●  [📚 Merge][🌙][ℹ][⚙] │ top bar
+  │  ( drag region )                                        │ ─ □ ✕ │ top bar
   ├──────────────┬───────────────────────────────────────────────────────┤
+  │ ◆ Elixir     │                                                       │
   │ ▤ Home       │                                                       │
   │ PROCESSING   │        ( stacked page — Home / Queue / Scanner /      │
   │ ▤ ▤ ▤       │          Bullet Audit / Hallucination / Convert )     │
@@ -11,16 +12,20 @@
   │ AUDIO        │                                                       │
   │ ▤ ▤ ▤       │                                                       │
   │ ──────────── │                                                       │
-  │ ⚙ Settings   │                                                       │
-  │ ℹ About      │                                                       │
+  │ ⚙ Settings   │  ──────────────────────────────────────────────────────  │
+  │ ℹ About      │  ● Connected                                   ☀ Light ▾ │ status strip
   └──────────────┴───────────────────────────────────────────────────────┘
 
 M2 (UI/UX redesign): the fixed compact left rail is the primary nav (spec
 §5); the experimental four are unlisted (decision Q2 — reachable via About
-& System + DnD → Queue); the header is reduced to brand + subtitle + the
-ONE aggregate LLM dot (decision Q3, mini-locked) + Merge + theme/about/
-settings (decision Q7 — the wizard button is gone; the home hero owns the
-conversion entry).  The gear button opens the VLC-style :class:`SettingsDialog`.
+& System + DnD → Queue); the header is reduced to the frameless window
+controls over the drag region (decision Q7 — the wizard button is gone;
+the home hero owns the conversion entry).  V0.6.85 (Round-5 §4): the
+duplicate header Settings action AND the backend/provider pill are RETIRED
+from the bar — Settings lives ONLY in the sidebar footer, and provider
+selection lives ONLY in the Settings dialog (AI → Local Model / API); the
+bottom status strip carries the truthful backend connection state
+(Round-5 §5: core.system.backend_connection — never a hardcoded 'Ready').
 Closing the window while a conversion is running asks for confirmation
 first.  Window size + position persist between launches.
 """
@@ -38,7 +43,6 @@ from PySide6.QtGui import (
     QColor,
     QDragEnterEvent,
     QDropEvent,
-    QIcon,
     QPainter,
     QPixmap,
 )
@@ -55,6 +59,7 @@ from PySide6.QtWidgets import (
 )
 
 from controller import Controller
+from core.system import backend_connection
 from ui_qt.components.icons import icon
 from ui_qt.components.modal_button_fit import install_modal_button_fit
 from ui_qt.components.simple_worker import SimpleWorker
@@ -137,10 +142,16 @@ class ElixirWindow(QMainWindow):
         # V0.6.69/V0.6.77: the poll-loop state — initialised BEFORE the UI
         # builds (the backend pill paints from the cached verdict during
         # shell construction, before the first probe lands).
+        # V0.6.85 (Round-5 §5): the poll now feeds the STATUS STRIP's
+        # connection state (the header pill is retired); the one-shot API
+        # provider check has its own worker ref here.
         self._llm_poll_timer = None
         self._llm_probe_worker = None
         self._llm_endpoints_snapshot = None
         self._llm_last_statuses: list | None = None
+        self._api_check_worker = None
+        self._backend_state: str | None = None
+        self._backend_detail: str = ""
 
         # ── the floating shell (V0.6.77) ───────────────────────────
         # backdrop (the desktop-like ground) → AppShell (the rounded
@@ -208,10 +219,17 @@ class ElixirWindow(QMainWindow):
         # this REPLACES the removed startup "Ollama not running" warning
         # dialog (a missing local server is a state to show, never a
         # load-time error to nag with; the 2026-10-26 field report).
-        # V0.6.77: the top bar now carries the reference's backend pill
-        # (dot + name + chevron) fed by the same loop; the full per-client
-        # lights live on in the About & System dialog.
+        # V0.6.77: the top bar carried the reference's backend pill fed by
+        # the same loop. V0.6.85 (Round-5 §4/§5): the pill is RETIRED —
+        # the loop's PRIMARY sink is now the status strip's connection
+        # state (plus the About & System lights, unchanged); for API
+        # providers the state comes from the one-shot bounded check
+        # instead (see _run_api_backend_check).
         self._setup_llm_lights_monitoring()
+        # Round-5 §5.2: "Trigger checks on application startup" — local
+        # providers resolve from the poll loop's immediate first tick;
+        # API providers get their one bounded check here.
+        self._run_api_backend_check()
 
         # V0.6.77: the frameless chrome interactions — drag the top bar,
         # double-click it to maximise/restore, grab the backdrop edges to
@@ -230,26 +248,24 @@ class ElixirWindow(QMainWindow):
         V0.6.77 (visual-fidelity pass): the brand moved into the sidebar
         (the reference's leaf + wordmark row); the top bar's left ~60% is
         intentionally empty in the reference, with the controls clustered
-        right: the backend status pill, the labelled Settings action, a
-        subtle divider, then the frameless window controls (min /
-        max-restore / close). V0.6.84 (Round-4 §5): the theme toggle that
-        used to sit between the divider and the window controls is REMOVED
-        — the status strip's Light/Dark selector is the app's single
-        visible theme control. The old header brand + subtitle, Merge
-        link, LLM lights and about button are all retired from this bar
-        (Merge + the audio tools live on in About & System; the pill
-        summarises the lights; About sits in the sidebar).
-
-        The empty bar area doubles as the window drag region (press to
-        startSystemMove; double-click toggles maximise).
+        right. V0.6.84 (Round-4 §5): the top-bar theme toggle was REMOVED
+        (the status strip's Light/Dark selector is the app's single visible
+        theme control). V0.6.85 (Round-5 §4.3): the backend/provider pill
+        AND the duplicate labelled Settings action are REMOVED as well —
+        provider selection lives ONLY in Settings (AI → Local Model /
+        API), Settings itself lives ONLY in the sidebar footer, and the
+        header keeps just the subtle divider + the frameless window
+        controls (min / max-restore / close). The empty bar area remains
+        the window drag region (press to startSystemMove; double-click
+        toggles maximise) — its spacing redistributes naturally with the
+        two retired controls gone (no placeholder slots are left behind).
         """
         bar = QFrame()
         bar.setObjectName("TopBar")
         # V0.6.83 (Round-3 §3.3/§6): 68 → 50. The correction spec pins the
         # header at "roughly 44–52 logical px" (§6: "Header: around 44–52
         # px") — the V0.6.77 68 was the reference mockup's chunkier frame;
-        # every control (pill, Settings, theme, window buttons) fits at 50
-        # and the drag region stays ≥ 40 px tall.
+        # every control fits at 50 and the drag region stays ≥ 40 px tall.
         bar.setFixedHeight(50)
         lay = QHBoxLayout(bar)
         lay.setContentsMargins(18, 0, 10, 0)
@@ -258,40 +274,12 @@ class ElixirWindow(QMainWindow):
         # The reference's empty left stretch — and the drag region.
         lay.addStretch(1)
 
-        # ── the backend status pill (green dot + name + chevron) ──────
-        # V0.6.77: replaces the per-client LLM lights (those live on in
-        # About & System, fed by the same poll loop). The pill names the
-        # CONFIGURED backend (ai.backend) and its dot mirrors that
-        # client's probe verdict; the tooltip carries every client.
-        self.backend_pill = QPushButton("Ollama")
-        self.backend_pill.setObjectName("BackendPill")
-        self.backend_pill.setCursor(Qt.PointingHandCursor)
-        self.backend_pill.setToolTip(
-            "Local LLM backend — opens Settings \u2192 AI \u2192 Local Model.\n"
-            "(Status re-checked every few seconds; all clients listed in "
-            "About & System.)"
-        )
-        self.backend_pill.clicked.connect(self._open_settings)
-        lay.addWidget(self.backend_pill)
-        lay.addSpacing(24)
-
-        # ── the labelled Settings action (gear + word) ────────────────
-        self.settings_btn = QPushButton("Settings")
-        self.settings_btn.setObjectName("TopBarAction")
-        self.settings_btn.setCursor(Qt.PointingHandCursor)
-        self.settings_btn.setToolTip("Open settings")
-        self.settings_btn.clicked.connect(self._open_settings)
-        lay.addWidget(self.settings_btn)
-        lay.addSpacing(20)
-
         # ── the subtle divider before the window controls ─────────────
-        # V0.6.84 (Round-4 §5): the top-bar MOON theme control is REMOVED —
-        # the status strip's Light/Dark selector is the single visible
-        # theme control (the spec's "Remove the top-bar moon theme control").
-        # The divider stays as the natural separator between the app
-        # controls and the frameless window controls; the spacing that the
-        # moon owned is folded into it ("redistribute remaining controls
-        # naturally; do not leave a conspicuous empty slot").
+        # V0.6.85 (Round-5 §4.3): with the pill and the Settings action
+        # retired, the divider is the natural seam between the app's empty
+        # drag region and the frameless window controls — the retired
+        # controls' spacing folds into the drag region ("redistribute
+        # remaining header spacing naturally").
         divider = QFrame()
         divider.setObjectName("VDivider")
         divider.setFixedHeight(32)
@@ -326,68 +314,12 @@ class ElixirWindow(QMainWindow):
         self._top_bar = bar
         return bar
 
-    # ── the backend pill's verdict (V0.6.77) ──────────────────────────
-    _PILL_CLIENT_FOR_BACKEND = {
-        "Ollama": "ollama",
-        "llama.cpp server": "llamacpp",
-        "LM Studio": "lmstudio",
-    }
-
-    def _backend_pill_name(self) -> str:
-        """The configured local backend's display name (settings-driven)."""
-        try:
-            return str(self.controller.get_setting("ai.backend", "Ollama"))
-        except Exception:
-            return "Ollama"
-
-    def _refresh_backend_pill(self) -> None:
-        """Dot colour + label from the CURRENT poll verdict + settings."""
-        p = theme_manager.palette
-        name = self._backend_pill_name()
-        client = self._PILL_CLIENT_FOR_BACKEND.get(name)
-        online = False
-        if self._llm_last_statuses:
-            for st in self._llm_last_statuses:
-                if getattr(st, "key", None) == client and getattr(st, "online", False):
-                    online = True
-                    break
-        # The dot: sage-green when the configured client answered the last
-        # probe, muted grey otherwise (a state to show, never an error).
-        dot = QColor(p.sage if online else p.text_muted)
-        pm = QPixmap(14, 14)
-        pm.fill(Qt.GlobalColor.transparent)
-        painter = QPainter(pm)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(dot)
-        painter.drawEllipse(3, 3, 8, 8)
-        painter.end()
-        self.backend_pill.setIconSize(QSize(14, 14))
-        self.backend_pill.setIcon(QIcon(pm))
-        # V0.6.79: the reference's chevron — the pill reads as a selector.
-        # At narrow widths the name drops (dot + chevron; tooltip carries
-        # the full status) so the bar never clips.
-        if getattr(self, "_pill_icon_only", False):
-            self.backend_pill.setText("\u25be")
-        else:
-            self.backend_pill.setText((name if client else "Local LLM") + "  \u25be")
-        tip = [f"Backend: {name} — {'running' if online else 'not running'}."]
-        if self._llm_last_statuses:
-            tip.append(
-                "All clients: "
-                + "; ".join(
-                    f"{getattr(s, 'name', s)} {'\u2713' if getattr(s, 'online', False) else '\u2717'}"
-                    for s in self._llm_last_statuses
-                )
-            )
-        tip.append("Click to open Settings \u2192 AI \u2192 Local Model.")
-        self.backend_pill.setToolTip("\n".join(tip))
-
     def _refresh_top_bar_icons(self) -> None:
         p = theme_manager.palette
         # V0.6.84 (Round-4 §5): no top-bar theme glyph anymore — the status
         # strip's sun/moon selector (StatusThemeBtn) is the one control.
-        self.settings_btn.setIcon(icon("settings", p.text_secondary, 15))
+        # V0.6.85 (Round-5 §4.3): no Settings glyph either — the sidebar's
+        # footer destination is the app's only Settings entry.
         self.min_btn.setIcon(icon("minus", p.text_secondary, 15))
         self.max_btn.setIcon(
             icon(
@@ -397,8 +329,6 @@ class ElixirWindow(QMainWindow):
             )
         )
         self.close_btn.setIcon(icon("x", p.text_secondary, 15))
-        if hasattr(self, "backend_pill"):
-            self._refresh_backend_pill()
 
     def _toggle_theme(self) -> None:
         theme_manager.toggle()
@@ -423,14 +353,25 @@ class ElixirWindow(QMainWindow):
         # from convert_view, not the main window).
 
     # ══════════════════════════════════════════════════════════════════════
-    # The bottom status strip (V0.6.77, visual-fidelity pass)
+    # The bottom status strip (V0.6.77, visual-fidelity pass;
+    # V0.6.85 Round-5 §5 — the truthful connection state)
     # ══════════════════════════════════════════════════════════════════════
     def _build_status_strip(self) -> QWidget:
         """The reference's thin persistent strip across the whole inner
-        shell: a sage status dot + the live status word on the left; a
-        divider, the sun/moon glyph, the theme name and a chevron on the
-        right. The theme control is REAL (a menu with Light / Dark); the
-        status word tracks the wizard's conversion lifecycle.
+        shell: the BACKEND CONNECTION STATE (dot + truthful label, left)
+        + the transient app-activity word, a divider, the sun/moon glyph,
+        the theme name and a chevron on the right. The theme control is
+        REAL (a menu with Light / Dark).
+
+        V0.6.85 (Round-5 §5): the left side no longer shows a hardcoded
+        'Ready' — it renders the explicit connection-state model from
+        ``core.system.backend_connection`` (Checking… / Connected /
+        Backend offline / API unavailable / Not configured / Model
+        unavailable), each with its own dot tint (muted green / amber /
+        muted red / gray). The wizard's conversion lifecycle keeps its own
+        DISTINCT activity word beside it ("Converting…" while a run is in
+        flight) — "the UI is running" is never conflated with "AI
+        operations can run" (spec §5.1).
         """
         strip = QFrame()
         strip.setObjectName("StatusStrip")
@@ -443,13 +384,25 @@ class ElixirWindow(QMainWindow):
         lay.setContentsMargins(36, 0, 20, 0)
         lay.setSpacing(8)
 
-        self._status_dot = QLabel()
-        self._status_dot.setFixedSize(14, 14)
-        lay.addWidget(self._status_dot)
+        # ── the backend connection state (Round-5 §5.3: dot + label) ──
+        self._backend_dot = QLabel()
+        self._backend_dot.setFixedSize(14, 14)
+        lay.addWidget(self._backend_dot)
 
-        self._status_label = QLabel("Ready")
-        self._status_label.setObjectName("SidebarLabel")
-        lay.addWidget(self._status_label)
+        self._backend_label = QLabel("")
+        self._backend_label.setObjectName("SidebarLabel")
+        lay.addWidget(self._backend_label)
+
+        # ── the transient activity word (a run in flight) — hidden when
+        #    idle, ALWAYS conceptually distinct from the backend state.
+        self._activity_sep = QLabel("·")
+        self._activity_sep.setObjectName("SidebarLabel")
+        self._activity_sep.setVisible(False)
+        lay.addWidget(self._activity_sep)
+        self._activity_label = QLabel("")
+        self._activity_label.setObjectName("SidebarLabel")
+        self._activity_label.setVisible(False)
+        lay.addWidget(self._activity_label)
         lay.addStretch(1)
 
         divider = QFrame()
@@ -465,29 +418,160 @@ class ElixirWindow(QMainWindow):
         self._status_theme_btn.clicked.connect(self._show_theme_menu)
         lay.addWidget(self._status_theme_btn)
 
+        # The honest opening word: a check is about to run (never 'Ready').
+        self.set_backend_state(backend_connection.CHECKING, "starting the first backend probe…")
         self._refresh_status_strip()
         return strip
 
     def _refresh_status_strip(self) -> None:
-        """Re-paint the dot + theme control from the CURRENT palette."""
+        """Re-paint the connection dot + theme control from the CURRENT
+        palette (the state LABEL itself is only ever set by
+        ``set_backend_state`` — the model owns the word)."""
         p = theme_manager.palette
-        if not hasattr(self, "_status_dot"):
+        if not hasattr(self, "_backend_dot"):
             return
-
-        pm = QPixmap(14, 14)
-        pm.fill(Qt.GlobalColor.transparent)
-        painter = QPainter(pm)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(p.sage))
-        painter.drawEllipse(3, 3, 8, 8)
-        painter.end()
-        self._status_dot.setPixmap(pm)
+        self._paint_backend_dot()
         glyph = "sun" if not p.is_dark else "moon"
         label = "Light Theme" if not p.is_dark else "Dark Theme"
         self._status_theme_btn.setText(label + "  \u25be")  # the reference's dropdown chevron
         self._status_theme_btn.setIcon(icon(glyph, p.text_secondary, 14))
         self._status_theme_btn.setIconSize(QSize(14, 14))
+
+    def _backend_state_color(self) -> QColor:
+        """The dot tint for the CURRENT state + theme (spec §5.3: muted
+        green / amber / muted red / gray — the label always carries the
+        state too, never color alone)."""
+        p = theme_manager.palette
+        sev = backend_connection.STATE_SEVERITY.get(self._backend_state, "neutral")
+        return QColor(
+            {
+                "ok": p.success,
+                "warn": p.warning,
+                "bad": p.error,
+                "neutral": p.text_muted,
+            }.get(sev, p.text_muted)
+        )
+
+    def _paint_backend_dot(self) -> None:
+        pm = QPixmap(14, 14)
+        pm.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pm)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(self._backend_state_color())
+        painter.drawEllipse(3, 3, 8, 8)
+        painter.end()
+        self._backend_dot.setPixmap(pm)
+
+    def set_backend_state(self, state: str, detail: str = "") -> None:
+        """Round-5 §5: render the connection state — the truthful word +
+        tinted dot + a detail tooltip (never a secret; never 'Ready').
+
+        ``state`` is one of ``backend_connection``'s constants; a no-op
+        when the strip is not built yet or the state is unchanged."""
+        if not hasattr(self, "_backend_label"):
+            return
+        label = backend_connection.STATE_LABELS.get(state, state)
+        if self._backend_state == state and self._backend_detail == detail:
+            return
+        self._backend_state = state
+        self._backend_detail = detail
+        self._backend_label.setText(label)
+        self._paint_backend_dot()
+        # The tooltip: the provider + the one-line evidence behind the
+        # state (the same probe text the About & System lights show).
+        cfg = getattr(self, "_backend_cfg", None)
+        head = f"{cfg.display_name} — {label}" if cfg is not None else label
+        tip = [head]
+        if detail:
+            tip.append(detail)
+        tip.append("Provider selection lives in Settings → AI (Local Model / API).")
+        self._backend_label.setToolTip("\n".join(tip))
+        self._backend_dot.setToolTip("\n".join(tip))
+
+    # ── the state model's drivers (Round-5 §5.2) ─────────────────────
+    def _refresh_backend_state_from_statuses(self) -> None:
+        """Local providers: derive the state from the poll loop's latest
+        REAL verdicts (the V0.6.69 loop — loopback GETs, worker thread,
+        5 s cadence; nothing new is polled)."""
+        cfg = self._snapshot_backend_config()
+        if cfg is None or cfg.is_api:
+            return
+        state, detail = backend_connection.derive_local_backend_state(
+            self._llm_last_statuses, cfg.client_key, cfg.model
+        )
+        self.set_backend_state(state, detail)
+
+    def _snapshot_backend_config(self):
+        """Main-thread snapshot of the provider configuration (fail-soft)."""
+        try:
+            from core.system.backend_connection import snapshot_backend_config
+
+            cfg = snapshot_backend_config(self.controller.settings)
+            self._backend_cfg = cfg
+            return cfg
+        except Exception:
+            logger.debug("backend config snapshot failed", exc_info=True)
+            return None
+
+    def _run_api_backend_check(self) -> None:
+        """API providers: ONE bounded async check (startup + after a
+        Settings close — a configuration change). NEVER a repeating poll
+        against a paid endpoint (spec §5.2: "Avoid aggressive polling");
+        the request runs on a SimpleWorker so the UI never freezes.
+        """
+        cfg = self._snapshot_backend_config()
+        if cfg is None or not cfg.is_api:
+            return
+        if not cfg.api_base_url or not cfg.api_key or not cfg.api_model:
+            missing = (
+                "base URL" if not cfg.api_base_url else "API key" if not cfg.api_key else "model"
+            )
+            self.set_backend_state(
+                backend_connection.NOT_CONFIGURED,
+                f"{cfg.display_name}: no {missing} configured (Settings → AI → API).",
+            )
+            return
+        self.set_backend_state(backend_connection.CHECKING, f"checking {cfg.display_name}…")
+        prev = self._api_check_worker
+        if prev is not None:
+            try:
+                if prev.is_running():
+                    return  # a check is already in flight — bounded, no stacking
+            except RuntimeError:
+                pass
+        spec = (cfg.provider, cfg.api_base_url, cfg.api_key, cfg.api_model)
+
+        def _probe():
+            return backend_connection.test_api_provider_connection(*spec)
+
+        worker = SimpleWorker(_probe)
+        self._api_check_worker = worker  # Python ref (GC hazard)
+        worker.finished.connect(self._on_api_check_finished)
+        worker.failed.connect(self._on_api_check_failed)
+        worker.start()
+
+    @Slot(object)
+    def _on_api_check_finished(self, result) -> None:
+        """Worker done — classify the REAL outcome (never a guess)."""
+        self._api_check_worker = None
+        ok, msg = result if isinstance(result, tuple) else (False, str(result))
+        cfg = getattr(self, "_backend_cfg", None)
+        name = cfg.display_name if cfg is not None else "API provider"
+        if ok:
+            self.set_backend_state(backend_connection.CONNECTED, f"{name}: {msg}")
+        else:
+            self.set_backend_state(backend_connection.API_UNAVAILABLE, f"{name}: {msg}")
+
+    @Slot(str)
+    def _on_api_check_failed(self, error: str) -> None:
+        """The probe itself exploded — an unavailable API is the honest
+        verdict (fail-soft, quiet log)."""
+        self._api_check_worker = None
+        cfg = getattr(self, "_backend_cfg", None)
+        name = cfg.display_name if cfg is not None else "API provider"
+        self.set_backend_state(backend_connection.API_UNAVAILABLE, f"{name}: {error}")
+        logger.debug("api backend check failed: %s", error)
 
     def _show_theme_menu(self) -> None:
         """The theme selector's Light / Dark menu (the chevron's promise)."""
@@ -509,10 +593,18 @@ class ElixirWindow(QMainWindow):
             self._toggle_theme()
 
     def set_status(self, text: str, busy: bool = False) -> None:
-        """The real status surface — the wizard's conversion lifecycle
-        (and any future worker) drives this; never a hardcoded 'Ready'."""
-        if hasattr(self, "_status_label"):
-            self._status_label.setText(text)
+        """The ACTIVITY surface — the wizard's conversion lifecycle (and
+        any future worker) drives this transient word beside the backend
+        state. V0.6.85 (Round-5 §5.1): conceptually DISTINCT from backend
+        readiness — "Converting…" never implies the backend is up, and the
+        connection state keeps its own label; an empty text hides the
+        word (there is no hardcoded 'Ready' anywhere)."""
+        if not hasattr(self, "_activity_label"):
+            return
+        self._activity_label.setText(text)
+        shown = bool(text)
+        self._activity_label.setVisible(shown)
+        self._activity_sep.setVisible(shown)
 
     # ══════════════════════════════════════════════════════════════════════
     # Frameless-window chrome (V0.6.77)
@@ -603,23 +695,25 @@ class ElixirWindow(QMainWindow):
     def _open_wizard(self) -> None:
         """V5.3.2: Open the Process Wizard as a modal dialog.
 
-        V0.6.77: the wizard's conversion lifecycle now drives the status
-        strip (Converting… / Ready) — the strip never shows a hardcoded
-        'Ready' while a run is in flight."""
+        V0.6.77: the wizard's conversion lifecycle drives the ACTIVITY
+        word in the status strip (Converting… / Conversion finished).
+        V0.6.85 (Round-5 §5.1): the activity word is conceptually distinct
+        from the backend connection state — the strip's left side keeps
+        rendering the truthful backend state (Connected / Backend
+        offline / …) the whole time, and the activity word clears when the
+        dialog closes (there is no 'Ready' to fall back to)."""
         from ui_qt.views.wizard_view import WizardView
 
         dlg = WizardView(self.controller, self)
         try:
             dlg.conversion_started.connect(lambda: self.set_status("Converting…"))
-            dlg.conversion_complete.connect(
-                lambda _r: self.set_status("Conversion finished — Ready")
-            )
+            dlg.conversion_complete.connect(lambda _r: self.set_status("Conversion finished"))
         except Exception:
             logger.debug("wizard status wiring unavailable", exc_info=True)
         # V18.20.4.5 (W-b9): delete the dialog tree on close — each open used to leak a hidden widget tree.
         dlg.setAttribute(Qt.WA_DeleteOnClose, True)
         dlg.exec()
-        self.set_status("Ready")
+        self.set_status("")
 
     def _open_merge_dialog(self) -> None:
         """V10.21.0: Open the multi-PDF merge dialog.
@@ -966,6 +1060,18 @@ class ElixirWindow(QMainWindow):
         # (output-folder override, live-log visibility, engine indicator).
         self.convert_view.apply_ui_preferences()
         self._settings_dialog = None
+        # V0.6.85 (Round-5 §5.2): "Trigger checks on … provider/configuration
+        # changes" — the Settings dialog is where provider selection now
+        # lives (§4.2), so a close re-verifies the (possibly new) backend:
+        # local providers re-derive from the cached verdicts (the 5 s poll
+        # re-probes liveness on its own cadence); API providers get ONE
+        # fresh bounded check. Fail-soft — a broken snapshot never blocks
+        # the settings close path.
+        try:
+            self._refresh_backend_state_from_statuses()
+            self._run_api_backend_check()
+        except Exception:
+            logger.debug("post-settings backend re-check failed", exc_info=True)
 
     # ══════════════════════════════════════════════════════════════════════
     # V0.6.69 — live local-LLM status lights (the poll loop)
@@ -993,9 +1099,9 @@ class ElixirWindow(QMainWindow):
           ``finished`` signal; a probe that EXPLODES is log-debug only
           (the lights keep the last known state — no dialog, ever).
         """
-        # V0.6.77: the top bar's backend pill is the primary sink (the
-        # per-client lights live on in the About & System dialog) — the
-        # pill is built unconditionally, so the poll always runs.
+        # V0.6.77: the status strip's connection state is the primary sink
+        # (the per-client lights live on in the About & System dialog) —
+        # the strip is built unconditionally, so the poll always runs.
         try:
             from PySide6.QtCore import QTimer
 
@@ -1006,6 +1112,13 @@ class ElixirWindow(QMainWindow):
             )
         except Exception:
             logger.warning("local-LLM lights monitoring unavailable", exc_info=True)
+            # Honest degradation: without the probe layer the state cannot
+            # be verified — "Not configured"-class neutral gray, never a
+            # fake Connected and never a stale 'Ready'.
+            self.set_backend_state(
+                backend_connection.NOT_CONFIGURED,
+                "backend status monitoring is unavailable in this build",
+            )
             return
 
         def _probe():
@@ -1048,8 +1161,11 @@ class ElixirWindow(QMainWindow):
         # dialog can show it IMMEDIATELY on open (its full lights would
         # otherwise wait for the next poll tick).
         self._llm_last_statuses = list(statuses) if statuses else []
-        if hasattr(self, "backend_pill"):
-            self._refresh_backend_pill()
+        # V0.6.85 (Round-5 §5): the STATUS STRIP's connection state is the
+        # poll's primary sink now (the header pill is retired) — derived
+        # from the REAL verdicts, fail-soft (an exploded probe keeps the
+        # last painted state).
+        self._refresh_backend_state_from_statuses()
         # M2 (decision Q3): the About & System dialog's full lights are the
         # second sink of this same poll loop — feed it while the dialog is
         # alive (W-b9 WA_DeleteOnClose: the C++ object may already be gone,
@@ -1071,11 +1187,10 @@ class ElixirWindow(QMainWindow):
 
     def resizeEvent(self, event) -> None:  # type: ignore[override]
         super().resizeEvent(event)
-        # V0.6.79 (spec P0/P2): the top bar carries its controls "only as
-        # needed by available width" — the Settings action drops its word
-        # below ~900 px and the backend pill drops its name below ~760 px
-        # (the dot + chevron stay; the tooltip carries the full name).
-        self._adapt_top_bar_to_width()
+        # V0.6.85 (Round-5 §4.3): the top-bar width adaptation is RETIRED
+        # with the pill and the Settings action — the remaining header
+        # chrome (divider + window controls) is width-invariant, so the
+        # drag region simply absorbs the whole bar at any width.
         # V0.6.83 (Round-3 §3.1): the rail tracks the window width —
         # clamp(180, 0.18*w, 260) logical px. The window owns the rule
         # (Qt layout propagation, no absolute positioning); the rail's
@@ -1113,37 +1228,15 @@ class ElixirWindow(QMainWindow):
             logger.debug("window minimum probe failed", exc_info=True)
         return (760, 440)
 
-    def _adapt_top_bar_to_width(self) -> None:
-        try:
-            w = self.width()
-            settings_icon_only = w < 940
-            pill_icon_only = w < 800
-            p = theme_manager.palette
-            if settings_icon_only:
-                if self.settings_btn.text():
-                    self.settings_btn.setText("")
-                    self.settings_btn.setIcon(icon("settings", p.text_secondary, 17))
-                    self.settings_btn.setToolTip("Open settings")
-            elif not self.settings_btn.text():
-                self.settings_btn.setText("Settings")
-                self.settings_btn.setIcon(icon("settings", p.text_secondary, 15))
-                self.settings_btn.setToolTip("Open settings")
-            if pill_icon_only:
-                if self.backend_pill.text():
-                    self._pill_icon_only = True
-                    self._refresh_backend_pill()
-            elif getattr(self, "_pill_icon_only", False):
-                self._pill_icon_only = False
-                self._refresh_backend_pill()
-        except Exception:
-            logger.debug("top-bar width adaptation failed", exc_info=True)
-
     def showEvent(self, event) -> None:  # type: ignore[override]
         super().showEvent(event)
         # V0.6.77: the pill's first verdict paints as soon as the QSS has
         # been polished (harmless no-op if the poll already fed it).
-        if hasattr(self, "backend_pill"):
-            self._refresh_backend_pill()
+        # V0.6.85 (Round-5 §5): the connection dot re-paints from the
+        # CURRENT palette once the strip is polished (the state label is
+        # owned by set_backend_state and is already truthful).
+        if hasattr(self, "_backend_dot"):
+            self._paint_backend_dot()
 
     def eventFilter(self, obj, event) -> bool:  # type: ignore[override]
         """V0.6.77 frameless chrome: the top bar drags (and double-click

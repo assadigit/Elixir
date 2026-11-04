@@ -460,11 +460,15 @@ class TestV0669AppSourcePins:
             assert absent not in _APP_SRC, absent
 
     def test_lights_are_built_into_the_top_bar(self):
-        """V0.6.77 (visual-fidelity pass): the top bar's sink is the
-        reference's backend PILL (dot + name + chevron) — the per-client
-        lights live only in the About & System dialog."""
-        assert 'setObjectName("BackendPill")' in _APP_SRC
-        assert "lay.addWidget(self.backend_pill)" in _APP_SRC
+        """V0.6.77 built the verdict sink as the top bar's backend PILL.
+        V0.6.85 (Round-5 §4/§5): the pill is RETIRED — the poll's primary
+        sink is now the STATUS STRIP's truthful connection state
+        (set_backend_state / _refresh_backend_state_from_statuses); the
+        per-client lights live only in the About & System dialog."""
+        assert "backend_pill" not in _APP_SRC, "Round-5 §4.3: the pill is retired"
+        assert "def set_backend_state" in _APP_SRC
+        assert "def _refresh_backend_state_from_statuses" in _APP_SRC
+        assert "self._refresh_backend_state_from_statuses()" in _APP_SRC
 
     def test_the_poll_loop_is_wired_and_ticks_immediately(self):
         assert "self._setup_llm_lights_monitoring()" in _APP_SRC
@@ -486,9 +490,10 @@ class TestV0669AppSourcePins:
     def test_verdicts_apply_on_the_main_thread_fail_soft(self):
         assert "@Slot(object)" in _APP_SRC
         assert "def _on_llm_probe_finished" in _APP_SRC
-        # V0.6.77: the verdict paints the backend pill (fail-soft — the
-        # pill keeps its last state when a probe explodes)
-        assert "self._refresh_backend_pill()" in _APP_SRC
+        # V0.6.85 (Round-5 §5): the verdict drives the STATUS STRIP's
+        # connection state (fail-soft — the strip keeps its last state
+        # when a probe explodes)
+        assert "self._refresh_backend_state_from_statuses()" in _APP_SRC
         # the failed probe is QUIET — a repeating probe must never spam
         # the log (the old path used logger.warning)
         assert 'logger.debug("local-LLM liveness probe failed: %s", error)' in _APP_SRC
@@ -498,12 +503,13 @@ class TestV0669AppSourcePins:
 
     def test_resize_adapts_and_theme_toggles_repaint(self):
         """V0.6.77 (visual-fidelity pass): the M2 mini-lock ladder is
-        retired WITH the backend pill (the pill has no width modes). The
-        surviving contract: the pill repaints on theme toggle and on
-        first show."""
+        retired WITH the backend pill (the pill has no width modes).
+        V0.6.85 (Round-5): the pill's repaint hooks are retired with it —
+        the surviving contract: the window-control icons repaint on theme
+        toggle and the connection dot repaints on first show."""
         assert "def resizeEvent(self, event) -> None:" in _APP_SRC
-        assert "_refresh_top_bar_icons" in _APP_SRC  # theme toggle repaints the pill
-        assert "self._refresh_backend_pill()" in _APP_SRC
+        assert "_refresh_top_bar_icons" in _APP_SRC  # theme toggle repaints the icons
+        assert "def _paint_backend_dot" in _APP_SRC
 
     def test_budget_cushion_and_fallback(self):
         """M2 evolution (decision Q3): the V0.6.69 measured-static-min

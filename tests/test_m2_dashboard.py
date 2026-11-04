@@ -273,14 +273,20 @@ class TestHeaderReduction:
         assert "wizard_btn" not in code, "decision Q7: the header wizard button is removed"
 
     def test_reference_top_bar_chrome(self):
-        """V0.6.77 (visual-fidelity pass): the reference top bar — the
-        backend pill + labelled Settings + divider + theme toggle + the
-        WORKING frameless window controls; the brand/subtitle/Merge link/
-        LLM lights/About button are all retired from the bar."""
+        """V0.6.77 (visual-fidelity pass) → V0.6.85 (Round-5 §4.3): the
+        top bar keeps ONLY the divider + the WORKING frameless window
+        controls over the drag region — the backend/provider pill AND the
+        duplicate labelled Settings action are RETIRED (provider
+        selection lives in Settings → AI; Settings lives in the sidebar
+        footer; the brand/subtitle/Merge link/LLM lights/About button
+        were already retired in earlier rounds)."""
         code = _strip_comments(_src(_APP))
-        assert 'setObjectName("BackendPill")' in code
-        assert "self._refresh_backend_pill" in code, "the pill must track the poll verdict"
-        assert 'setObjectName("TopBarAction")' in code
+        # the retired controls are REALLY gone
+        assert "backend_pill" not in code, "Round-5 §4.3: the provider pill is retired"
+        assert "BackendPill" not in code
+        assert "settings_btn" not in code, "Round-5 §4.1: the header Settings duplicate is retired"
+        assert "TopBarAction" not in code
+        assert "_adapt_top_bar_to_width" not in code, "its two subjects are gone"
         assert 'setObjectName("VDivider")' in code
         for ctrl, meth in (
             ("min_btn", "showMinimized"),
@@ -296,7 +302,42 @@ class TestHeaderReduction:
         )
         # the brand belongs to the sidebar now, not the bar
         assert "load_brand_logo" not in code
-        assert "build_status_lights" not in code, "the pill replaced the header lights"
+        assert "build_status_lights" not in code, "the status strip carries the connection state"
+
+    def test_sidebar_settings_is_the_only_settings_entry(self):
+        """Round-5 §4.1/§9.1: the sidebar footer's Settings destination is
+        the dashboard's ONLY Settings entry — and it still opens the
+        existing dialog (the route is untouched)."""
+        code = _strip_comments(_src(_APP))
+        sidebar = _strip_comments(_src(_SIDEBAR))
+        # the sidebar entry exists + routes to the same dialog
+        assert '"settings", "settings", "Settings"' in sidebar
+        assert 'if key == "settings":' in code
+        assert "self._open_settings()" in code
+        # no second Settings surface was introduced elsewhere
+        assert "settings_btn" not in code
+
+    def test_status_strip_pins(self):
+        """V0.6.77 → V0.6.85 (Round-5 §5): the persistent bottom strip —
+        a REAL theme selector, the TRUTHFUL backend connection state
+        (dot + label from core.system.backend_connection; never a
+        hardcoded 'Ready'), and the DISTINCT transient activity word for
+        the wizard lifecycle."""
+        code = _strip_comments(_src(_APP))
+        assert 'setObjectName("StatusStrip")' in code
+        assert 'setObjectName("StatusThemeBtn")' in code
+        assert "_show_theme_menu" in code, "the selector must actually switch themes"
+        assert 'set_status("Converting…")' in code
+        assert "conversion_complete.connect" in code
+        # Round-5 §5: the truthful state model drives the left side
+        assert "from core.system import backend_connection" in _src(_APP)
+        assert "def set_backend_state" in code
+        assert 'backend_connection.CHECKING' in code
+        assert '"Ready"' not in _strip_comments(_src(_APP)).replace(
+            '"Conversion finished — Ready"', ''
+        ), "no hardcoded Ready anywhere"
+        # the strip's initial word is CHECKING, never Ready
+        assert "self.set_backend_state(backend_connection.CHECKING" in code
 
     def test_merge_moved_to_about_system(self):
         """V0.6.77: the reference top bar retired the header Merge link;
@@ -308,17 +349,6 @@ class TestHeaderReduction:
         assert '("merge", "copy", "Merge Books"' in about
         assert "open_tool = Signal(str)" in about
         assert "dlg.open_tool.connect(self._on_about_tool_requested)" in code
-
-    def test_status_strip_pins(self):
-        """V0.6.77: the persistent bottom strip — a REAL theme selector
-        and a status word driven by the wizard lifecycle (never a
-        hardcoded 'Ready')."""
-        code = _strip_comments(_src(_APP))
-        assert 'setObjectName("StatusStrip")' in code
-        assert 'setObjectName("StatusThemeBtn")' in code
-        assert "_show_theme_menu" in code, "the selector must actually switch themes"
-        assert 'set_status("Converting…")' in code
-        assert "conversion_complete.connect" in code
 
 
 # ════════════════════════════════════════════════════════════════════════════

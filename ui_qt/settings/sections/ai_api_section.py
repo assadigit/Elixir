@@ -5,13 +5,21 @@ custom providers) and the legacy ``AiModelsSection`` / ``AiProviderSection``
 aliases moved VERBATIM from ``ui_qt/settings/sections.py`` during the
 V0.4.19 de-monolithization — bodies byte-identical; only this docstring
 and the re-homed imports are new.
+
+V0.6.85 (Round-5 §4.2): the section gains the API half of the app's
+provider-selection home (the header's provider pill is retired) plus a
+one-shot "Test connection" row — the SAME async verifier pattern the
+wizard's cloud Test button uses (worker thread, W-b11/W-b18 re-enable
+in both outcome handlers).
 """
 
 from __future__ import annotations
 
+from PySide6.QtCore import Slot
 from PySide6.QtWidgets import QComboBox, QGroupBox, QHBoxLayout, QLabel, QPushButton, QWidget
 
 from controller import Controller
+from ui_qt.components.simple_worker import SimpleWorker
 from ui_qt.settings.widgets import labeled_line, make_form
 from ui_qt.theme import theme_manager
 from utils.provider_catalog import (  # V0.16 (Phase 3 / 3.2): Qt-free home
@@ -54,7 +62,9 @@ class AiApiSection(QGroupBox):
             "Paid, no GPU needed. Use a preset to quick-fill popular providers."
         )
         api_desc.setWordWrap(True)
-        api_desc.setStyleSheet(f"color: {theme_manager.palette.text_secondary}; font-size: 11px; padding: 2px 0 6px 0;")
+        api_desc.setStyleSheet(
+            f"color: {theme_manager.palette.text_secondary}; font-size: 11px; padding: 2px 0 6px 0;"
+        )
         f.addRow("", api_desc)
 
         # ── provider type dropdown ──────────────────────────────────────
@@ -115,6 +125,31 @@ class AiApiSection(QGroupBox):
 
         f.addRow("", QLabel(storage_status_label()))
         f.addRow("Model", self.model_edit)
+
+        # ── the one-shot connection test (V0.6.85, Round-5 §4.2) ───────
+        # The API half of the provider-selection home: verify the CURRENT
+        # widget values (base URL + key + model) with ONE tiny real request
+        # on a worker thread — the same verifier the status strip's state
+        # model runs (never a block; the button re-enables in BOTH outcome
+        # handlers).
+        conn_row = QHBoxLayout()
+        conn_row.setContentsMargins(0, 0, 0, 0)
+        conn_row.setSpacing(8)
+        self.test_btn = QPushButton("  Test connection")
+        self.test_btn.setObjectName("Compact")
+        self.test_btn.setToolTip(
+            "Send a tiny request to verify the endpoint, key and model work\n"
+            "(one real call, run off the UI thread)"
+        )
+        self.test_btn.clicked.connect(self._test_connection)
+        conn_row.addWidget(self.test_btn)
+        self.test_label = QLabel("")
+        self.test_label.setWordWrap(True)
+        self.test_label.setStyleSheet(
+            f"color: {theme_manager.palette.text_secondary}; background: transparent; font-size: 10px;"
+        )
+        conn_row.addWidget(self.test_label, 1)
+        f.addRow("", conn_row)
 
         self.setLayout(f)
         self._populate_providers_list()
@@ -180,6 +215,49 @@ class AiApiSection(QGroupBox):
             providers.pop(row)
             _save_custom_providers(self.controller, providers)
             self._populate_providers_list()
+
+    # ── the one-shot connection test (V0.6.85, Round-5 §4.2) ──────────
+    def _test_connection(self) -> None:
+        """Verify the CURRENT widget values with one tiny request on a
+        worker thread; the result marshals back via a queued slot (the
+        wizard step5 W-b11/W-b18 pattern)."""
+        from core.system.backend_connection import test_api_provider_connection
+
+        provider = "claude" if "Claude" in self.type_combo.currentText() else "openai_compatible"
+        base = self.base_url_edit.text().strip()
+        key = self.api_key_edit.text().strip()
+        model = self.model_edit.text().strip()
+        self.test_btn.setEnabled(False)
+        self.test_label.setText("Testing…")
+        self.test_label.setStyleSheet(
+            f"color: {theme_manager.palette.text_secondary}; background: transparent; font-size: 10px;"
+        )
+
+        def _run() -> tuple[bool, str]:
+            return test_api_provider_connection(provider, base, key, model)
+
+        w = SimpleWorker(_run)
+        self._test_worker = w  # Python ref (GC hazard, W-b11 pattern)
+        w.finished.connect(self._on_test_finished)
+        w.failed.connect(self._on_test_failed)
+        w.start()
+
+    @Slot(object)
+    def _on_test_finished(self, result) -> None:
+        ok, msg = result if isinstance(result, tuple) else (False, str(result))
+        self._apply_test_result(ok, msg)
+
+    @Slot(str)
+    def _on_test_failed(self, error: str) -> None:
+        self._apply_test_result(False, error)
+
+    def _apply_test_result(self, ok: bool, msg: str) -> None:
+        p = theme_manager.palette
+        self.test_label.setText(("✅ " if ok else "❌ ") + msg)
+        self.test_label.setStyleSheet(
+            f"color: {p.success if ok else p.error}; background: transparent; font-size: 10px;"
+        )
+        self.test_btn.setEnabled(True)
 
     def save(self) -> None:
         c = self.controller

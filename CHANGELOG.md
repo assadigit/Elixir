@@ -31,6 +31,93 @@
 >    information invented; the commits remain the authoritative record.
 
 
+## V0.6.85 — UI/UX correction Round 5: the truthful backend status (a real connection-state model replaces the misleading "Ready" — Checking… / Connected / Backend offline / API unavailable / Not configured / Model unavailable, each derived from a REAL probe via the existing V0.6.69 poll for locals and ONE bounded async request for APIs; `LocalLLMStatus` gains the `models` evidence tuple so "Model unavailable" is only claimed when the listing is authoritative), the clean header (the duplicate Settings action AND the provider pill retired — provider selection + a one-shot async Test connection now live in Settings → AI), the Full Conversion Wizard card's VERIFIED vertical centering (equal bookend stretches + an explicitly right-aligned arrow disc; 10/10 live geometry checks), and the hero's decoration stepped back one more notch (circle alphas 24/18/14 → 14/10/7, hills 30/18 → 20/12)
+
+**The correction spec behind this release:** the Round-5 audit
+(`ELIXIR_UI_UX_CORRECTION_ROUND_5.md`) — a refinement/correctness pass
+over the composition the previous rounds landed (explicitly NOT another
+redesign: the 3×3 grid, the sidebar, the hero and the status bar all
+preserved). The four headline defects and their fixes:
+
+1. **The status lied** (§5): the bottom-left word was a hardcoded
+   `Ready` regardless of any backend's actual reachability. Replaced by
+   `core/system/backend_connection.py` — a Qt-free, never-raising state
+   model (snapshot-in/snapshot-out like the monitor; no secrets in any
+   state or detail string). Locals derive from the EXISTING poll loop
+   (loopback GETs against the CONFIGURED endpoints, worker thread, 5 s
+   cadence — nothing new is polled); API providers get ONE tiny real
+   request (the app's own `test_cloud_connection` for the OpenAI shape;
+   a Claude twin with `ClaudeProvider`'s exact `x-api-key` +
+   `anthropic-version` contract) at startup and after a Settings close —
+   never a repeating paid-endpoint poll. A missing base URL/key/model
+   is `Not configured` (gray); a failed connection/auth/response is
+   `API unavailable` (red) with the distinguishing detail in the
+   tooltip. The wizard's lifecycle keeps its own DISTINCT transient
+   word (cleared on dialog close) — "the UI is running" is never
+   conflated with "AI operations can run". No `"Ready"` string remains
+   in the app.
+2. **The header cluttered** (§4): the provider pill
+   ("llama.cpp server ▾") and the duplicate labelled Settings action
+   are RETIRED — the bar keeps only the divider + the working frameless
+   window controls over the drag region (the retired controls' spacing
+   folds into the drag region; `_adapt_top_bar_to_width` retired with
+   its two subjects). Provider selection lives ONLY in Settings → AI
+   (Local Model / API — the pre-existing sections, each now with a
+   one-shot async "Test connection" row, W-b11/W-b18 pattern); Settings
+   itself lives ONLY in the sidebar footer (the same `_open_settings`
+   route — the dialog, its pages and every setting untouched).
+3. **The featured card's text group sat below the midline** (§3): the
+   text column's bookend stretches were `addStretch(1)` over
+   `addStretch()` (factors 1 vs 0), so ALL the slack went to the TOP
+   spacer and pushed the title/description toward the card's bottom
+   while the icon and arrow stayed centered. Now equal factors — and
+   the arrow disc carries an explicit `AlignVCenter | AlignRight` (a
+   fixed-size widget with no horizontal flag sits at its cell's LEFT
+   edge, leaving the disc a hair short of the right inset at some
+   column widths). Text stays LEFT-aligned (the reference's alignment;
+   "middle alignment" is vertical centering only). Verified by
+   `scripts/r5_alignment.py` — 10/10 live geometry checks at the field
+   window (gaps 19/19, icon/text/arrow at midline 42.0 of an 84 px
+   card, title.x == desc.x, the arrow flush at the inset, equal 10 px
+   spacings, 3×3 grid intact).
+4. **The hero's largest wash still read as a contour** (§7): the
+   concentric circles step back 24/18/14 → 14/10/7 alpha and the hills
+   30/18 → 20/12 — the whole painted decoration recedes so the
+   books/quill still-life unambiguously leads (verified in both themes;
+   the dark mode's lighter sage needed it even more).
+
+**The icon family — approval boundary respected (§6):** the supplied
+`ELIXIR_ICON_SAMPLE_SUMMARIZATION.png` is a style PROTOTYPE for user
+approval only. The complete nine-icon set (including Translation) is
+deliberately NOT generated and NO production icon was replaced this
+round; after the user approves the direction, the set ships as one
+consistent pass (the §6.2 inventory + §6.3 production contract are
+documented in the spec).
+
+**Evidence (the now6 set, all from the RUNNING app via
+`scripts/r5_screenshot.py` with hermetic profiles; every capture prints
+the state its status strip actually rendered):** `now6.png` +
+`now6_dark.png` (light/dark at the 1536×1024 reference framing),
+`now6_wide.png` (1920×1080), `now6_backend_offline.png` (the app's real
+default backend offline → "Backend offline", red dot),
+`now6_backend_connected.png` (a REAL local OpenAI-compatible test
+provider — `scripts/r5_test_provider.py` — genuinely answered the app's
+verification POST → "Connected", green dot; nothing faked),
+`now6_model_unavailable.png` (a real listing answered but didn't serve
+the configured model → "Model unavailable", amber dot). The full
+functional sweep re-ran clean (12/12 destinations, both wizard
+launches, all tool dispatches, theme round trip, clean shutdown).
+
+**Tests:** new `tests/test_v0685_round5_status.py` (the state model
+directly — all six states, the evidence rules, the provider→client
+mapping, the config-gap classification, the app wiring, the
+equal-stretch structure); the M2 header pins, the V0.6.69 pill pins
+(the sink is now the status strip) and the V0.6.84 hero-wash pin
+updated to the superseded values. 159 + 139 passed across the Round-5 +
+Round-4 + Round-3 + M2 + V0.6.69 + settings suites; ruff check + format
+clean on every touched file.
+
+
 ## V0.6.84.1 — the Round-4 polish: three wrap defects fixed at the user's field window (the sidebar's longest tool name back on ONE line — FONT.sidebar 13→12 + tightened nav insets, the column 139 px vs the label's 130; the hero support's pinned two-line break restored — the width cap now floors at the pinned first line's measured advance so "organized" is never orphaned; the featured card's description back on TWO lines — the card chrome 110→97 px + the desc band's floor 11→10 px), the architecture/typeface/reflow untouched, the full functional sweep re-run clean, and the now5 evidence set regenerated
 
 **Spec follow-up:** `ELIXIR_UI_UX_CORRECTION_ROUND_4.md` §2.2

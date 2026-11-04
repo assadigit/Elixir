@@ -235,7 +235,9 @@ class _HeroCard(QFrame):
         hill.closeSubpath()
         painter.setPen(Qt.PenStyle.NoPen)
         c1 = QColor(p.sage)
-        c1.setAlpha(30)
+        # V0.6.85 (Round-5 §7): the hills step back too (30 → 20 / 18 → 12)
+        # — the whole painted decoration recedes so the still-life leads.
+        c1.setAlpha(20)
         painter.setBrush(c1)
         painter.drawPath(hill)
         hill2 = QPainterPath(QPointF(w * 0.52, h))
@@ -243,7 +245,7 @@ class _HeroCard(QFrame):
         hill2.lineTo(w, h)
         hill2.closeSubpath()
         c2 = QColor(p.warning)
-        c2.setAlpha(18)
+        c2.setAlpha(12)
         painter.setBrush(c2)
         painter.drawPath(hill2)
 
@@ -254,9 +256,17 @@ class _HeroCard(QFrame):
         # point — the spec's "Refine the background shapes if they
         # compete with the artwork. The books and quill should be the
         # focal point, not the decorative circles."
+        # V0.6.85 (Round-5 §7): one more measured retreat (24/18/14 →
+        # 14/10/7) — the side-by-side against the approved reference
+        # showed the largest disc still reading as a CONTOUR around the
+        # books rather than the reference's barely-there ground tint; at
+        # ≤14 alpha the circles keep the hero's gentle depth while the
+        # books and quill unambiguously lead. Verified in BOTH themes
+        # (the dark mode's lighter sage needs the lower alpha even more
+        # — its 24-alpha wash read brighter than the light theme's).
         painter.setPen(Qt.PenStyle.NoPen)
         cx, cy = w * 0.72, h * 0.34
-        for dia, alpha in ((h * 1.62, 24), (h * 1.14, 18), (h * 0.70, 14)):
+        for dia, alpha in ((h * 1.62, 14), (h * 1.14, 10), (h * 0.70, 7)):
             ac = QColor(p.sage)
             ac.setAlpha(alpha)
             painter.setBrush(ac)
