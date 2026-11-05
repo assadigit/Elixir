@@ -80,8 +80,27 @@ _SECRET_PATHS = {
 
 def _is_secret_path(path: str) -> bool:
     """Check if a settings path is an API-key-like secret."""
-    return path in _SECRET_PATHS or any(
-        keyword in path.lower() for keyword in ("api_key", "secret", "token", "password")
+    if path in _SECRET_PATHS:
+        return True
+    lowered = path.lower()
+    if any(keyword in lowered for keyword in ("api_key", "secret", "password")):
+        return True
+    # V0.7.3 (wizard rework ⑤): "token" is NO LONGER a secret keyword on
+    # its own. In this codebase "token" overwhelmingly means LLM tokens —
+    # the bare keyword made is_secret_path true for
+    # ``postprocess.token_saver``, ``segmentation.token_limit``,
+    # ``summarisation.max_context_tokens`` and ``max_output_tokens``, so
+    # controller.build_request_from_ui resolved those four numeric/boolean
+    # fields through the KEYCHAIN branch (str()-coerced request defaults
+    # when ui_data omitted the key; and on keyring machines
+    # core.system.secrets.get_secret would "migrate" a plaintext numeric
+    # setting into the OS keychain and WIPE it from settings.json). Only
+    # auth-token compounds remain credential-shaped; no such path exists
+    # today (the explicit _SECRET_PATHS set enumerates every real one),
+    # the compounds are the safety net.
+    return any(
+        keyword in lowered
+        for keyword in ("api_token", "access_token", "auth_token", "session_token")
     )
 
 

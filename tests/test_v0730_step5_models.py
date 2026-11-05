@@ -731,3 +731,318 @@ class TestMirrorMatchesRealSummarizer:
         )
         ctx, _out = effective_limits(40000, 16000, self.UNKNOWN_LARGE)
         assert s.request.summarisation_max_context_tokens == ctx == 40000
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 5c-ui — single-owner limits (D12): Step 5 owns them; Step 7b's group is gone
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestStep7bDuplicateGroupDeleted:
+    def test_no_summarization_limits_group(self):
+        src = _src(_STEP7B)
+        assert 'QGroupBox("Summarization limits")' not in src
+        assert "Summarization limits" not in src.split('"""')[0], "module docstring still lies"
+        assert "self.ctx_spin" not in src
+        assert "self.out_spin" not in src
+
+    def test_step7b_save_no_longer_writes_the_limits(self):
+        """§W12's save-order overwrite: Step 7b must not touch the two
+        state fields Step 5 owns."""
+        src = _src(_STEP7B)
+        assert "self.state.max_context_tokens" not in src
+        assert "self.state.max_output_tokens" not in src
+
+    def test_cache_checkbox_survives_in_quality_controls(self):
+        """The cache flag is NOT a duplicate — it relocated, not died."""
+        src = _src(_STEP7B)
+        assert 'QCheckBox("Cache summaries to disk (faster re-runs)")' in src
+        assert "self.state.cache_enabled = self.cache_cb.isChecked()" in src
+
+    def test_offscreen_no_limits_group_built(self):
+        QtWidgets = _qt_or_skip()
+        QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+        from ui_qt.views.wizard_steps.shared import WizardState
+        from ui_qt.views.wizard_steps.step7b_fine_tune import Step7bFineTune
+
+        step = Step7bFineTune(_StubController(), WizardState())
+        try:
+            boxes = [b.title() for b in step.findChildren(QtWidgets.QGroupBox)]
+            assert "Summarization limits" not in boxes
+            assert "Quality controls" in boxes
+            assert step.cache_cb.text().startswith("Cache summaries")
+            # The two old spin refs are gone from the instance.
+            assert not hasattr(step, "ctx_spin")
+            assert not hasattr(step, "out_spin")
+        finally:
+            step.hide()
+            step.deleteLater()
+
+    def test_single_owner_step5_writes_the_limits(self):
+        src = _src(_STEP5)
+        assert "self.state.max_context_tokens = self.heavy_ctx_spin.value()" in src
+        assert "self.state.max_output_tokens = self.heavy_out_spin.value()" in src
+
+
+class TestStep5AutoLimits:
+    @pytest.fixture(scope="class")
+    def app(self):
+        QtWidgets = _qt_or_skip()
+        return QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+
+    def test_auto_checked_by_construction(self, app):
+        step = _build_step5()
+        try:
+            assert step.limits_auto_cb.isChecked(), "Auto is the default (the plan's 5c)"
+            assert not step.heavy_ctx_spin.isEnabled()
+            assert not step.heavy_out_spin.isEnabled()
+        finally:
+            step.hide()
+            step.deleteLater()
+
+    def test_computed_line_renders_at_open(self, app):
+        step = _build_step5()
+        try:
+            text = step.effective_limits_label.text()
+            assert text.startswith("Effective after model limits: ")
+            assert " ctx / " in text and text.endswith(" out")
+            # The numbers parse and obey the ladder's invariants.
+            ctx_s, out_s = text.split(": ", 1)[1].replace(" out", "").split(" ctx / ")
+            assert int(ctx_s.replace(",", "")) >= 32768
+            assert int(out_s.replace(",", "")) >= 2048
+        finally:
+            step.hide()
+            step.deleteLater()
+
+    def test_auto_spins_carry_effective_values_and_save(self, app):
+        """With Auto on, the (disabled) spins hold the effective values —
+        save_to_state reads the spins, so the state gets the truth."""
+        from core.summarisation.effective_limits import effective_limits
+
+        step = _build_step5({"summarisation.provider": "ollama"})
+        try:
+            step._on_models_loaded(["Ternary-Bonsai-2-27B"])
+            step.summ_combo.setCurrentIndex(step.summ_combo.findData("Ternary-Bonsai-2-27B"))
+            step._update_limits_line()
+            exp_ctx, exp_out = effective_limits(
+                step.heavy_ctx_spin.value(), step.heavy_out_spin.value(), "Ternary-Bonsai-2-27B"
+            )
+            assert (step.heavy_ctx_spin.value(), step.heavy_out_spin.value()) == (exp_ctx, exp_out)
+            # A LARGE model (27B ≥ 13B): the output must have been forced
+            # up to the 16000 floor even though the state seed was lower.
+            assert step.heavy_out_spin.value() == 16000
+            step.save_to_state()
+            assert step.state.max_context_tokens == exp_ctx
+            assert step.state.max_output_tokens == exp_out
+        finally:
+            step.hide()
+            step.deleteLater()
+
+    def test_auto_tracks_the_model_class(self, app):
+        """Switching the pick to a small model drops the output to 8192 —
+        the computed line and the disabled spins follow the model class."""
+        step = _build_step5({"summarisation.provider": "ollama"})
+        try:
+            step._on_models_loaded(["Ternary-Bonsai-2-27B", "gemma3:12b"])
+            step.summ_combo.setCurrentIndex(step.summ_combo.findData("gemma3:12b"))
+            assert step.heavy_out_spin.value() == 8192
+            assert "8,192 out" in step.effective_limits_label.text()
+            step.summ_combo.setCurrentIndex(step.summ_combo.findData("Ternary-Bonsai-2-27B"))
+            assert step.heavy_out_spin.value() == 16000
+            assert "16,000 out" in step.effective_limits_label.text()
+        finally:
+            step.hide()
+            step.deleteLater()
+
+    def test_manual_mode_enables_spins_and_line_keeps_truth(self, app):
+        step = _build_step5({"summarisation.provider": "ollama"})
+        try:
+            step._on_models_loaded(["Ternary-Bonsai-2-27B"])
+            step.summ_combo.setCurrentIndex(step.summ_combo.findData("Ternary-Bonsai-2-27B"))
+            step.limits_auto_cb.setChecked(False)
+            assert step.heavy_ctx_spin.isEnabled()
+            assert step.heavy_out_spin.isEnabled()
+            # Manual 4096 on a LARGE model: the line must still say 16,000
+            # (the backend will force it up) — honesty in both modes.
+            step.heavy_out_spin.setValue(4096)
+            assert "16,000 out" in step.effective_limits_label.text()
+            step.save_to_state()
+            assert step.state.max_output_tokens == 4096, "manual mode saves the MANUAL number"
+        finally:
+            step.hide()
+            step.deleteLater()
+
+    def test_compact_flag_feeds_the_mirror_on_show(self, app):
+        step = _build_step5({"summarisation.provider": "ollama"})
+        try:
+            step._on_models_loaded(["Ternary-Bonsai-2-27B"])
+            step.summ_combo.setCurrentIndex(step.summ_combo.findData("Ternary-Bonsai-2-27B"))
+            step.state.compact_summaries = True  # Step 4's REFERENCE card
+            step.showEvent(None)
+            assert step.heavy_out_spin.value() == 2048
+            assert "2,048 out" in step.effective_limits_label.text()
+        finally:
+            step.hide()
+            step.deleteLater()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 5c — defaults unified (audit §5): one default per field, every layer
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class _RealSettings:
+    def __init__(self, data=None):
+        self._data = dict(data or {})
+
+    def get(self, path, default=None):
+        return self._data.get(path, default)
+
+    def set(self, path, value):
+        self._data[path] = value
+
+
+class TestDefaultsUnified:
+    def test_coverage_85_everywhere(self):
+        from core.models.models import ConversionRequest
+        from ui_qt.views.wizard_steps.shared import WizardState
+
+        assert WizardState().coverage_threshold == 85
+        assert (
+            ConversionRequest(
+                input_path=Path("/tmp/x.pdf"), output_dir=Path("/tmp/o")
+            ).coverage_threshold
+            == 0.85
+        )
+        # The settings layers' literals.
+        assert '"coverage_threshold": 85,' in _src(_SETTINGS)
+        assert '("coverage_threshold", 85),' in _src(_SETTINGS)
+        # The real controller's fallback: ui_data WITHOUT the key and no
+        # settings → 0.85 (the map + the /100 transform, end to end).
+        import controller as controller_mod
+
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(controller_mod.Settings, "_test_override", _RealSettings({}))
+        try:
+            req = controller_mod.Controller().build_request_from_ui({"input_path": "/tmp/test.pdf"})
+        finally:
+            monkeypatch.undo()
+        assert req.coverage_threshold == 0.85
+        assert 's.get_setting("summarisation.coverage_threshold", 85)' in _src(_WIZARD)
+
+    def test_limits_one_default_per_field(self):
+        from core.models.models import ConversionRequest
+        from ui_qt.views.wizard_steps.shared import WizardState
+
+        st = WizardState()
+        rq = ConversionRequest(input_path=Path("/tmp/x.pdf"), output_dir=Path("/tmp/o"))
+        assert st.max_context_tokens == rq.summarisation_max_context_tokens == 32768
+        assert st.max_output_tokens == rq.summarisation_max_output_tokens == 16000
+        # The settings schema agrees.
+        assert '"max_context_tokens": 32768,' in _src(_SETTINGS)
+        assert '"max_output_tokens": 16000,' in _src(_SETTINGS)
+        # The REAL controller's map fallbacks, end to end: ui_data without
+        # the keys and no settings → the unified defaults on the request.
+        import controller as controller_mod
+
+        monkeypatch = pytest.MonkeyPatch()
+        monkeypatch.setattr(controller_mod.Settings, "_test_override", _RealSettings({}))
+        try:
+            req = controller_mod.Controller().build_request_from_ui({"input_path": "/tmp/test.pdf"})
+        finally:
+            monkeypatch.undo()
+        assert req.summarisation_max_context_tokens == 32768
+        assert req.summarisation_max_output_tokens == 16000
+        assert 's.get_setting("summarisation.max_context_tokens", 32768)' in _src(_WIZARD)
+
+    def test_touched_fields_round_trip_real_controller(self, monkeypatch):
+        """The mission's round-trip gate: every field this phase touches
+        flows WizardState → to_ui_data → _REQUEST_FIELD_MAP → request."""
+        pytest.importorskip("controller")
+        import controller as controller_mod
+
+        monkeypatch.setattr(controller_mod.Settings, "_test_override", _RealSettings({}))
+        from ui_qt.views.wizard_steps.shared import WizardState
+
+        state = WizardState()
+        state.input_path = "book.pdf"
+        state.max_context_tokens = 40000
+        state.max_output_tokens = 12000
+        state.coverage_threshold = 85
+        state.cache_enabled = True
+        ui_data = state.to_ui_data()
+        assert ui_data["summarisation_max_context_tokens"] == 40000
+        assert ui_data["summarisation_max_output_tokens"] == 12000
+        assert ui_data["coverage_threshold"] == 85
+        assert ui_data["summarisation_cache_enabled"] is True
+        request = controller_mod.Controller().build_request_from_ui(ui_data)
+        assert request.summarisation_max_context_tokens == 40000
+        assert request.summarisation_max_output_tokens == 12000
+        assert request.coverage_threshold == 0.85
+        assert request.summarisation_cache_enabled is True
+
+    def test_wizard_save_order_no_longer_overwrites_step5(self):
+        """§W12's mechanism, pinned dead: the Start loop saves every step,
+        and only Step 5's save writes the limits."""
+        wsrc = _src(_WIZARD)
+        assert "for s in self.steps[:9]:" in wsrc  # the save loop stays
+        src7b = _src(_STEP7B)
+        assert "self.state.max_context_tokens" not in src7b
+        assert "self.state.max_output_tokens" not in src7b
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# V0.7.3 fix — the "token" keyword false positive in is_secret_path
+# (found live while pinning the unified defaults: four numeric/boolean
+# request fields resolved through the KEYCHAIN branch)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestTokenKeywordFalsePositive:
+    _NOT_SECRETS = [
+        "summarisation.max_context_tokens",
+        "summarisation.max_output_tokens",
+        "segmentation.token_limit",
+        "postprocess.token_saver",
+        "summarisation.llamacpp_context_tokens",
+        "summarisation.b4_threshold_tokens",
+    ]
+
+    def test_llm_token_fields_are_not_secret_paths(self):
+        from core.system.secrets import is_secret_path
+
+        for path in self._NOT_SECRETS:
+            assert not is_secret_path(path), f"{path} is not a credential"
+
+    def test_real_credentials_still_secret(self):
+        from core.system.secrets import is_secret_path
+
+        for path in (
+            "summarisation.api_key",
+            "summarisation.llamacpp_api_key",
+            "translation.cloud_api_key",
+            "tts.normalize_api_key",
+            "grounding.cloud_api_key",
+        ):
+            assert is_secret_path(path), f"{path} must stay a secret path"
+        # The heuristic's safety net survives for credential-shaped names.
+        assert is_secret_path("somefuture.api_key")
+        assert is_secret_path("somefuture.access_token")
+        assert is_secret_path("somefuture.password")
+
+    def test_request_defaults_resolve_as_ints_not_keychain_strings(self):
+        """The live repro: ui_data WITHOUT the limits keys and no settings
+        must produce INT request defaults (they used to come back as the
+        str()-coerced keychain fallbacks '32768' / '16000')."""
+        import controller as controller_mod
+
+        m = pytest.MonkeyPatch()
+        m.setattr(controller_mod.Settings, "_test_override", _RealSettings({}))
+        try:
+            req = controller_mod.Controller().build_request_from_ui({"input_path": "/tmp/test.pdf"})
+        finally:
+            m.undo()
+        assert req.summarisation_max_context_tokens == 32768
+        assert isinstance(req.summarisation_max_context_tokens, int)
+        assert req.summarisation_max_output_tokens == 16000
+        assert isinstance(req.summarisation_max_output_tokens, int)
