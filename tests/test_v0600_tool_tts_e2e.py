@@ -833,7 +833,11 @@ class TestGpuEngineContracts:
             VIBEVOICE_VOICES,
         )
 
-        assert VIBEVOICE_LOAD_TIMEOUT_S == 300 and VIBEVOICE_LINE_TIMEOUT_S == 600
+        # V0.7.6 pin refresh: the per-line timeout is 3600 since V0.6.31
+        # (aed75f5 — 600 s was too short for CPU generation at 4 it/s ≈
+        # 34 min/line; rationale in the source comment at
+        # vibevoice_engine.py:46). The pin had kept the pre-V0.6.31 600.
+        assert VIBEVOICE_LOAD_TIMEOUT_S == 300 and VIBEVOICE_LINE_TIMEOUT_S == 3600
         assert len(VIBEVOICE_VOICES) == 25
         assert len(VIBEVOICE_ENGLISH_VOICES) == 7
         assert all(v[3] == "English" for v in VIBEVOICE_ENGLISH_VOICES)

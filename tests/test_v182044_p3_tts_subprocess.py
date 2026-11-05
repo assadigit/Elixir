@@ -217,7 +217,12 @@ class TestSourcePins:
         from core.tts.vibevoice_engine import VIBEVOICE_LINE_TIMEOUT_S as v_line
         from core.tts.vibevoice_engine import VIBEVOICE_LOAD_TIMEOUT_S as v_load
 
-        assert (q_load, q_chunk, v_load, v_line) == (120, 120, 300, 600)
+        # V0.7.6 pin refresh: v_line is 3600 since V0.6.31 (aed75f5:
+        # "increase per-line timeout 600s→3600s" — 600 s was too short
+        # for CPU generation at 4 it/s ≈ 34 min/line; the source comment
+        # at vibevoice_engine.py:46 documents the rationale). The pin had
+        # kept the pre-V0.6.31 value.
+        assert (q_load, q_chunk, v_load, v_line) == (120, 120, 300, 3600)
 
     def test_w_c2_qwen_timeout_path_kills_before_raise(self):
         kill_idx = QWEN_SRC.find("model load not ready (timeout,")
@@ -295,7 +300,15 @@ class TestSourcePins:
         """V11.55/V11.57 vibevoice per-line timeout kill remains, now via
         the shared base with a REAL timeout."""
         assert 'f"timeout ({VIBEVOICE_LINE_TIMEOUT_S}s)"' in VIBE_SRC
-        assert "VibeVoice subprocess timed out (600s)" in VIBE_SRC
+        # V0.7.6 pin refresh: the message must reference the CONSTANT,
+        # never a hardcoded number — the pre-V0.6.31 pin asserted the
+        # expanded "(600s)" literal, which V0.6.31's deliberate
+        # 600→3600 raise (aed75f5) made stale. The f-string form below is
+        # the actual no-magic-number contract.
+        assert (
+            'f"VibeVoice subprocess timed out ({VIBEVOICE_LINE_TIMEOUT_S}s)'
+            in VIBE_SRC
+        )
 
 
 # ── Behavioral: the shared base itself (O-c2) ───────────────────────────────

@@ -223,10 +223,16 @@ class TestLoadErrorDiagnostics:
 
 class TestCpuLoadWarning:
     def test_cpu_loading_status_logs_warning(self, vibe_engine, monkeypatch):
-        """V0.6.15: device=cpu at load is the 600 s per-line timeout in
+        """V0.6.15: device=cpu at load is the per-line timeout in
         slow motion — a WARNING must name it while there is time to cancel.
         Contract: WARNING only — the load itself still completes (fail-soft,
-        short lines may still work)."""
+        short lines may still work).
+
+        V0.7.6 pin refresh: V0.6.31 (aed75f5) rewrote this warning —
+        the per-line timeout is 3600 (was 600), and the old
+        "~/.elixir/gpu_probe.log" pointer became the actionable
+        "reinstall torch with CUDA" command. Both prior assertions
+        predated that rewrite."""
         engine, logs = vibe_engine
         proc = _FakeProc(
             [
@@ -240,8 +246,8 @@ class TestCpuLoadWarning:
         assert engine._loaded is True, "CPU load is a WARNING, never a block"
         w = logs.warnings()
         assert "loading on CPU" in w, w
-        assert "600s timeout" in w, w
-        assert "gpu_probe.log" in w, w
+        assert "3600s per-line timeout" in w, w
+        assert "reinstall torch with CUDA" in w, w
 
     def test_cuda_loading_status_no_cpu_warning(self, vibe_engine, monkeypatch):
         engine, logs = vibe_engine
