@@ -126,100 +126,10 @@ def apply_preset_settings(update_setting: Callable[[str, Any], None], key: str) 
     return bundle
 
 
-# V10.35.0 (Sprint 7.5): Token budget slider presets
-TOKEN_BUDGET_PRESETS = [
-    {
-        "position": 0,
-        "label": "Quick",
-        "time_estimate": "~5 min",
-        "cost_estimate": "$0",
-        "settings": {
-            "summarisation.enabled": True,
-            "summarisation.include_keypoints": True,
-            "docx.enabled": False,
-            "outputs.briefing": False,
-            "outputs.flashcards": False,
-            "outputs.mindmap": True,
-        },
-    },
-    {
-        "position": 25,
-        "label": "Standard",
-        "time_estimate": "~15 min",
-        "cost_estimate": "$0",
-        "settings": {
-            "summarisation.enabled": True,
-            "summarisation.include_keypoints": True,
-            "docx.enabled": False,
-            "outputs.briefing": True,
-            "outputs.flashcards": True,
-            "outputs.mindmap": True,
-        },
-    },
-    {
-        "position": 50,
-        "label": "Enhanced",
-        "time_estimate": "~25 min",
-        "cost_estimate": "$0.50",
-        "settings": {
-            "summarisation.enabled": True,
-            "summarisation.include_keypoints": True,
-            "summarisation.simplified_keypoints_enabled": True,
-            "docx.enabled": True,
-            "outputs.briefing": True,
-            "outputs.podcast": True,
-            "outputs.flashcards": True,
-            "outputs.obsidian": True,
-            "outputs.study_guide": True,
-            "outputs.mindmap": True,
-        },
-    },
-    {
-        "position": 75,
-        "label": "Comprehensive",
-        "time_estimate": "~35 min",
-        "cost_estimate": "$1.50",
-        "settings": {
-            "summarisation.enabled": True,
-            "summarisation.include_keypoints": True,
-            "summarisation.simplified_keypoints_enabled": True,
-            "docx.enabled": True,
-            "outputs.briefing": True,
-            "outputs.podcast": True,
-            "outputs.flashcards": True,
-            "outputs.packets": True,
-            "outputs.obsidian": True,
-            "outputs.study_guide": True,
-            "outputs.social": True,
-            "outputs.mindmap": True,
-            "outputs.qa": True,
-            "outputs.glossary": True,
-        },
-    },
-    {
-        "position": 100,
-        "label": "Thorough",
-        "time_estimate": "~45 min",
-        "cost_estimate": "$2.50",
-        "settings": {
-            "summarisation.enabled": True,
-            "summarisation.include_keypoints": True,
-            "summarisation.simplified_keypoints_enabled": True,
-            "docx.enabled": True,
-            "outputs.briefing": True,
-            "outputs.podcast": True,
-            "outputs.flashcards": True,
-            "outputs.packets": True,
-            "outputs.obsidian": True,
-            "outputs.study_guide": True,
-            "outputs.social": True,
-            "outputs.mindmap": True,
-            "outputs.qa": True,
-            "outputs.glossary": True,
-            "outputs.patterns": True,
-            "outputs.cheatsheet": True,
-            "outputs.epub": True,
-            "outputs.quote_bank": True,
-        },
-    },
-]
+# V0.7.5 (wizard rework ⑦, D13/B4): TOKEN_BUDGET_PRESETS is DELETED
+# with the token-budget slider (its only consumer). The slider was
+# doubly broken (the Step-4 sync checked hasattr(self, "step4") on
+# the STEP-7 widget — never true; Step-4's save clobbered the
+# slider's writes at Start) and its presets force DEPRECATED outputs
+# on (social/patterns/cheatsheet/quote_bank — D6 removed them from the
+# wizard; these presets would re-enable them).

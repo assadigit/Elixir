@@ -119,12 +119,12 @@ class WizardState:
     segment_strategy: str = "auto"
     token_limit: int = 2000
     enable_semantic: bool = True
-    academic_rigor: bool = False
-    # V10.28.0 (Sprint 1): Conservative drop mode — when True, the
-    # summariser keeps every bullet except thinking/prompt-leakage ones.
-    # All other drops are logged to the quarantine (drops.jsonl) but the
-    # bullets stay in the output.  See SPRINT_ROADMAP.md Sprint 1.
-    conservative_drops: bool = False
+    # V0.7.5 (wizard rework ⑦, D19/D18): academic_rigor and
+    # conservative_drops are NO LONGER wizard state fields — the
+    # checkboxes are gone from Step 7 (their labels lied / they were a
+    # debugging stance). The backend mechanisms stay; the Settings page
+    # is the only UI writer, and the request builder resolves both from
+    # settings when the wizard path doesn't carry them.
     # Step 7b: Fine-tuning — Post-processing (5)
     clean_markdown: bool = True
     fix_missing_spaces: bool = False
@@ -221,8 +221,11 @@ class WizardState:
             "segment_strategy": self.segment_strategy,
             "token_limit_per_segment": self.token_limit,
             "enable_semantic_segmentation": self.enable_semantic,
-            "academic_rigor": self.academic_rigor,
-            "conservative_drops": self.conservative_drops,  # V10.28.0 (Sprint 1)
+            # V0.7.5 (rework ⑦, D19/D18): academic_rigor / conservative_drops
+            # are dropped from the wizard round-trip — Step 7 no longer
+            # forces False over the Settings choice (the B5-class
+            # overwrite). The request builder resolves both from settings
+            # (controller._REQUEST_FIELD_MAP rows stay).
             "simplified_keypoints_enabled": self.simplified_keypoints_enabled,
             # Step 7b: Fine-tuning — Post-processing
             "clean_markdown": self.clean_markdown,

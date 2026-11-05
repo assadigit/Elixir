@@ -210,11 +210,14 @@ class Step8Review(WizardStep):
         lines.append("")
 
         # Advanced
+        # V0.7.5 (rework ⑦, 7a): the honest line — strategy, token limit,
+        # semantic fallback. Academic rigor + conservative drops are no
+        # longer wizard-controlled (D19/D18 — Settings owns them; the
+        # review no longer prints values the wizard never set).
         lines.append("<b>Advanced</b>")
-        lines.append(f"  Segmentation: {s.segment_strategy} (tokens: {s.token_limit})")
-        lines.append(f"  Semantic: {'yes' if s.enable_semantic else 'no'}")
-        lines.append(f"  Academic rigor: {'yes' if s.academic_rigor else 'no'}")
-        lines.append(f"  Conservative drops: {'yes' if s.conservative_drops else 'no'}")
+        lines.append(f"  Segmentation: {s.segment_strategy}")
+        lines.append(f"  Token limit/segment: {s.token_limit}")
+        lines.append(f"  Semantic fallback: {'yes' if s.enable_semantic else 'no'}")
         lines.append("")
 
         # Fine-tuning

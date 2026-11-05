@@ -275,7 +275,13 @@ class ConversionRequest:
     # fallback) — the field's first real consumer (audit §W4: vestigial).
     page_group_size: int = 0
     chunk_by_page_groups: bool = True
-    token_limit_per_segment: int = 1200
+    # V0.7.5 (wizard rework ⑦, 7a — audit §5): 1200 → 2000. The
+    # request-layer default now matches the settings schema and the
+    # wizard state (2,000 everywhere) — the last disagreeing row of the
+    # audit's defaults table resolved by this phase. Read only by
+    # TokenSegmenter (the manual token-limit field on Step 7 says "the
+    # default (2,000)" — the copy and the value must agree).
+    token_limit_per_segment: int = 2000
     enable_semantic_segmentation: bool = True
 
     # Summarisation

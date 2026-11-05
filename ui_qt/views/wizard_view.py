@@ -10,7 +10,7 @@ Steps:
   4. Output selection (19 types: 4 core + 15 Output Studio)
   5. Model selection (summarization, OCR, translation)
   6. Translation settings (backend, harakat, outputs)
-  7. Advanced (segmentation, filter, academic rigor)
+  7. Advanced (segmentation strategy, token limit, semantic fallback)
   8. Review + start conversion
   9. Live logs + progress
 
@@ -934,10 +934,14 @@ class WizardView(QDialog):
                 f"    Translate outputs: {', '.join(tr_outs) if tr_outs else '(none)'}", "INFO"
             )
         # Advanced
-        log.append(f"  Segmentation: {s.segment_strategy} (tokens: {s.token_limit})", "INFO")
+        # V0.7.5 (rework ⑦, 7a): the honest one-line form — the strategy,
+        # the token limit per segment, and the semantic fallback toggle.
+        # Academic rigor + conservative drops are no longer wizard
+        # controlled (D19/D18 — the Settings page owns them; the start
+        # log no longer prints a value the wizard never set).
         log.append(
-            f"  Semantic: {s.enable_semantic}, Academic rigor: {s.academic_rigor}, "
-            f"Conservative drops: {s.conservative_drops}",
+            f"  Segmentation: {s.segment_strategy} — token limit/segment: "
+            f"{s.token_limit}, semantic fallback: {s.enable_semantic}",
             "INFO",
         )
         # Fine-tuning
