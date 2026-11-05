@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QPushButton,
     QScrollArea,
     QSlider,
     QSpinBox,
@@ -72,6 +73,41 @@ class Step7bFineTune(WizardStep):
         subtitle.setObjectName("Caption")
         subtitle.setWordWrap(True)
         lay.addWidget(subtitle)
+
+        # ── V0.7.5 (wizard rework ⑦, 7d / W12): the recommended-defaults
+        # banner-button (the Step-1 detector-banner precedent): one click
+        # applies the post-rework audited defaults to THIS step's controls.
+        # The honest trio it stands for: the coverage loop is on by design
+        # (85, regenerate to measured ±3, max 3 rounds — 7c); self-
+        # consistency stays OFF by default (Settings → AI quality; the
+        # wizard never writes it — 7b); model limits live on Step 5
+        # (Auto by default — V0.7.3's single-owner rule). The wizard never
+        # writes settings-owned keys from here (the B5-class overwrite).
+        rec_row = QHBoxLayout()
+        rec_row.setSpacing(8)
+        self.recommended_btn = QPushButton("Use recommended settings")
+        self.recommended_btn.setObjectName("Compact")
+        self.recommended_btn.clicked.connect(self._apply_recommended)
+        self.recommended_btn.setToolTip(
+            "Applies the audited defaults to this step's controls:\n"
+            "• Coverage target 85 (the loop is always on: regenerate to\n"
+            "  measured ±3, max 3 rounds)\n"
+            "• Resume on · cache off · content filter on\n"
+            "• Post-processing: clean markdown + page-heading removal on;\n"
+            "  the rest off. DOCX TOC on, author Elixir.\n"
+            "• Embedding/perf at their audited defaults.\n\n"
+            "Self-consistency stays OFF by default (Settings → AI quality;\n"
+            "Ollama-only) — the wizard never writes it. Model limits live\n"
+            "on Step 5 (Auto by default)."
+        )
+        rec_row.addWidget(self.recommended_btn)
+        self.recommended_caption = QLabel(
+            "Coverage 85 · resume on · cache off — the audited defaults for this step."
+        )
+        self.recommended_caption.setObjectName("Caption")
+        self.recommended_caption.setWordWrap(True)
+        rec_row.addWidget(self.recommended_caption, 1)
+        lay.addLayout(rec_row)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -327,6 +363,71 @@ class Step7bFineTune(WizardStep):
         host_lay.addStretch()
         scroll.setWidget(host)
         lay.addWidget(scroll, 1)
+
+    # ── V0.7.5 (rework ⑦, 7d): the audited-defaults applier ──────────────
+
+    _RECOMMENDED = {
+        # The audited post-rework defaults (the WizardState dataclass
+        # defaults + the unified coverage 85). Pinned by
+        # tests/test_v0750_steps7_7b.py::TestFineTuneRecommended.
+        "clean": True,
+        "spaces": False,
+        "saver": True,
+        "pagehead": True,
+        "separators": False,
+        "docx_author": "Elixir",
+        "docx_toc": True,
+        "coverage": 85,
+        "resume": True,
+        "cache": False,
+        "filter": True,
+        "math": False,
+        "layout": False,
+        "embedding_model": "BAAI/bge-small-en-v1.5",
+        "embedding_device": "auto",
+        "vram_recovery": 0,
+        "b4_sections": 6,
+        "b4_threshold": 12000,
+    }
+
+    def _apply_recommended(self) -> None:
+        """Apply the audited defaults to this step's controls (7d).
+
+        The honest trio the button stands for: the coverage loop is on by
+        design (85, ±3, max 3 rounds); self-consistency stays OFF by
+        default (Settings → AI quality — the wizard never writes it);
+        model limits live on Step 5 (Auto by default). This method only
+        touches THIS step's controls — no settings-owned keys, no
+        cross-step writes (the B5-class overwrite is the cautionary tale).
+        """
+        r = self._RECOMMENDED
+        self.clean_cb.setChecked(r["clean"])
+        self.spaces_cb.setChecked(r["spaces"])
+        self.token_saver_cb.setChecked(r["saver"])
+        self.pagehead_cb.setChecked(r["pagehead"])
+        self.separators_cb.setChecked(r["separators"])
+        self.author_edit.setText(r["docx_author"])
+        self.toc_cb.setChecked(r["docx_toc"])
+        self.coverage_spin.setValue(r["coverage"])
+        self.resume_cb.setChecked(r["resume"])
+        self.cache_cb.setChecked(r["cache"])
+        self.filter_cb.setChecked(r["filter"])
+        self.math_cb.setChecked(r["math"])
+        self.layout_cb.setChecked(r["layout"])
+        # Embedding: select the audited model (add it as a custom entry if
+        # the combo doesn't list it — the D14 add-missing pattern).
+        _idx = self.embed_combo.findData(r["embedding_model"])
+        if _idx < 0:
+            self.embed_combo.addItem(r["embedding_model"], r["embedding_model"])
+            _idx = self.embed_combo.findData(r["embedding_model"])
+        if _idx >= 0:
+            self.embed_combo.setCurrentIndex(_idx)
+        _dev_idx = self.embed_dev_combo.findData(r["embedding_device"])
+        if _dev_idx >= 0:
+            self.embed_dev_combo.setCurrentIndex(_dev_idx)
+        self.thermal_slider.setValue(r["vram_recovery"])
+        self.b4_sections_spin.setValue(r["b4_sections"])
+        self.b4_threshold_spin.setValue(r["b4_threshold"])
 
     def save_to_state(self) -> None:
         self.state.clean_markdown = self.clean_cb.isChecked()

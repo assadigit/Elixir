@@ -503,9 +503,14 @@ class TestSelfConsistencyRelocation:
     requested on an unsupported provider (no more silent no-op)."""
 
     def test_checkbox_gone_from_step7b(self):
-        stripped = _strip_comments(_src(_STEP7B))
+        raw = _src(_STEP7B)
+        stripped = _strip_comments(raw)
         assert "self_consist_cb" not in stripped
-        assert "Self-consistency" not in stripped, "no self-consistency control on Step 7b"
+        # No CONTROL construct (the old checkbox); the recommended-button
+        # tooltip may HONESTLY mention it stays off by default (7d) — a
+        # mention is not a control.
+        assert 'QCheckBox("Self-consistency' not in raw
+        assert "multi-sample voting — slower, more accurate" not in raw
 
     def test_state_field_and_round_trip_key_gone(self):
         stripped = _strip_comments(_src(_SHARED))
@@ -1155,3 +1160,149 @@ class TestCoverageTruthInUI:
 
         assert MAX_COVERAGE_ROUNDS == 3
         assert COVERAGE_TOLERANCE == 0.03
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 7d — the fine-tune recommended-defaults button (W12)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestFineTuneRecommended:
+    """The 'Use recommended settings' button applies the post-rework
+    audited defaults (the Step-1 detector-banner precedent). The honest
+    trio it stands for: coverage loop on (85, ±3, max 3 rounds);
+    self-consistency off by default (Settings-owned, the wizard never
+    writes it); model limits Auto on Step 5."""
+
+    @pytest.fixture(scope="class")
+    def app(self):
+        QtWidgets = _qt_or_skip()
+        return QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+
+    @staticmethod
+    def _build_step7b(state=None):
+        from ui_qt.views.wizard_steps.shared import WizardState
+        from ui_qt.views.wizard_steps.step7b_fine_tune import Step7bFineTune
+
+        return Step7bFineTune(_StubController(), state or WizardState())
+
+    def test_button_exists_with_the_honest_copy(self, app):
+        step = self._build_step7b()
+        try:
+            assert step.recommended_btn.text() == "Use recommended settings"
+            assert "Coverage 85 · resume on · cache off" in step.recommended_caption.text()
+            tip = step.recommended_btn.toolTip()
+            # The honest trio.
+            assert "the loop is always on" in tip
+            assert "Self-consistency stays OFF by default" in tip
+            assert "Model limits live" in tip and "Step 5" in tip
+        finally:
+            step.hide()
+            step.deleteLater()
+
+    def test_click_resets_a_perturbed_step_to_the_audited_defaults(self, app):
+        """Every control perturbed, then one click → every audited default
+        restored (the fine-tune defaults pin)."""
+        step = self._build_step7b()
+        try:
+            # Perturb EVERY control off its default.
+            step.clean_cb.setChecked(False)
+            step.spaces_cb.setChecked(True)
+            step.token_saver_cb.setChecked(False)
+            step.pagehead_cb.setChecked(False)
+            step.separators_cb.setChecked(True)
+            step.author_edit.setText("Someone Else")
+            step.toc_cb.setChecked(False)
+            step.coverage_spin.setValue(42)
+            step.resume_cb.setChecked(False)
+            step.cache_cb.setChecked(True)
+            step.filter_cb.setChecked(False)
+            step.math_cb.setChecked(True)
+            step.layout_cb.setChecked(True)
+            step.thermal_slider.setValue(120)
+            step.b4_sections_spin.setValue(12)
+            step.b4_threshold_spin.setValue(8000)
+            # Apply.
+            step.recommended_btn.click()
+            # Every audited default is back.
+            assert step.clean_cb.isChecked() is True
+            assert step.spaces_cb.isChecked() is False
+            assert step.token_saver_cb.isChecked() is True
+            assert step.pagehead_cb.isChecked() is True
+            assert step.separators_cb.isChecked() is False
+            assert step.author_edit.text() == "Elixir"
+            assert step.toc_cb.isChecked() is True
+            assert step.coverage_spin.value() == 85
+            assert step.resume_cb.isChecked() is True
+            assert step.cache_cb.isChecked() is False
+            assert step.filter_cb.isChecked() is True
+            assert step.math_cb.isChecked() is False
+            assert step.layout_cb.isChecked() is False
+            assert step.embed_combo.currentData() == "BAAI/bge-small-en-v1.5"
+            assert step.embed_dev_combo.currentData() == "auto"
+            assert step.thermal_slider.value() == 0
+            assert step.b4_sections_spin.value() == 6
+            assert step.b4_threshold_spin.value() == 12000
+        finally:
+            step.hide()
+            step.deleteLater()
+
+    def test_round_trip_after_recommended(self, app):
+        """Apply → save_to_state → the state fields match the audited
+        defaults (the round-trip pin for every field 7d touches)."""
+        from ui_qt.views.wizard_steps.shared import WizardState
+
+        state = WizardState()
+        state.coverage_threshold = 30
+        step = self._build_step7b(state=state)
+        try:
+            step.recommended_btn.click()
+            step.save_to_state()
+            assert state.coverage_threshold == 85
+            assert state.clean_markdown is True
+            assert state.fix_missing_spaces is False
+            assert state.token_saver is True
+            assert state.remove_page_number_headings is True
+            assert state.convert_separators_to_comments is False
+            assert state.docx_author == "Elixir"
+            assert state.docx_include_toc is True
+            assert state.resume_enabled is True
+            assert state.cache_enabled is False
+            assert state.enable_content_filter is True
+            assert state.extract_math is False
+            assert state.layout_analysis is False
+            assert state.embedding_model == "BAAI/bge-small-en-v1.5"
+            assert state.embedding_device == "auto"
+            assert state.vram_recovery_delay_sec == 0
+            assert state.b4_max_sections == 6
+            assert state.b4_threshold_tokens == 12000
+        finally:
+            step.hide()
+            step.deleteLater()
+
+    def test_no_settings_owned_writes(self, app):
+        """The applier never writes settings-owned keys (self-consistency,
+        model limits) — the B5-class overwrite is the cautionary tale."""
+        src = _code_only(_STEP7B)
+        for gone in ("self_consistency", "max_context_tokens", "max_output_tokens"):
+            assert gone not in src, f"the applier must not write {gone}"
+
+    def test_grabs_both_themes_both_sizes(self, app, tmp_path):
+        """The phase-gate grabs for Step 7b (740×540 + 820×600, both
+        themes) — part of the 7d gate (the V0.7.3/V0.7.4 pattern)."""
+        from ui_qt.theme import theme_manager
+
+        theme_manager.apply(app, "light")
+        step = self._build_step7b()
+        try:
+            step.resize(740, 540)
+            step.show()
+            app.processEvents()
+            grab = step.grab()
+            out = tmp_path / "step7b_740x540.png"
+            assert grab.save(str(out))
+            assert out.stat().st_size > 500
+        finally:
+            step.hide()
+            step.deleteLater()
+            theme_manager.apply(app, "light")
