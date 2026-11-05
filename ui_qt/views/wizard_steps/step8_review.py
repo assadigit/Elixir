@@ -21,6 +21,10 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+# V0.7.2 (wizard rework ④, B8): the outputs line enumerates through the
+# registry — it can never drift from the output list again (the audit
+# found 9-10 newer outputs silently omitted here, §3 B8).
+from core.outputs.registry import selected_output_names
 from ui_qt.theme import theme_manager
 from ui_qt.views.wizard_steps.shared import WizardStep
 
@@ -151,33 +155,12 @@ class Step8Review(WizardStep):
 
         # Outputs
         lines.append("<b>📤 Outputs</b>")
-        outs = []
-        if s.generate_summaries and s.include_executive_summary:
-            outs.append("exec summary")
-        if s.generate_summaries and s.include_thorough_summary:
-            outs.append("thorough summary")
-        if s.include_keypoints:
-            outs.append("keypoints")
-        if s.simplified_keypoints_enabled:
-            outs.append("simplified keypoints")
-        if s.generate_docx:
-            outs.append("DOCX")
-        if s.outputs_briefing:
-            outs.append("briefing")
-        if s.outputs_podcast:
-            outs.append("podcast script")
-        if s.outputs_flashcards:
-            outs.append("flashcards")
-        if s.outputs_obsidian:
-            outs.append("obsidian")
-        if s.outputs_study_guide:
-            outs.append("study guide")
-        if s.outputs_social:
-            outs.append("social")
-        if s.outputs_mindmap:
-            outs.append("mindmap")
-        if s.outputs_tts:
-            outs.append("TTS audio")
+        # V0.7.2 (wizard rework ④, B8): registry-driven — every
+        # non-deprecated selected output appears here (previously
+        # packets/qa/glossary/evidence/epub/compact… were silently
+        # omitted). The TTS name honestly says it is built from the
+        # briefing (B9).
+        outs = selected_output_names(s)
         lines.append("  " + (", ".join(outs) if outs else "(none)"))
         lines.append("")
 

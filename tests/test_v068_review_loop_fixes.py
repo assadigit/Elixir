@@ -465,11 +465,15 @@ class TestB11NarrowedSwallows:
 
 class TestB19LyingDocs:
     def test_step4_docstring_matches_registry(self):
-        from core.outputs.registry import OUTPUT_REGISTRY
+        from core.outputs.registry import OUTPUT_REGISTRY, get_core_outputs, get_studio_outputs
 
         src = (REPO / "ui_qt/views/wizard_steps/step4_outputs.py").read_text(encoding="utf-8")
         n = len(OUTPUT_REGISTRY)
-        assert f"+ 4 core = {n} total" in src, (
+        n_core = len(get_core_outputs())
+        n_studio = len(get_studio_outputs())
+        # V0.7.2: dynamic — the registry grew (7 core + 17 studio = 24);
+        # the docstring must state the real totals, however they evolve.
+        assert f"{n_studio} studio + {n_core} core = {n} total" in src, (
             f"the step4 docstring must state the real registry total ({n})"
         )
         assert "= 19 total" not in src, "the stale 19-total claim is back"

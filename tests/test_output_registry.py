@@ -27,19 +27,38 @@ _spec.loader.exec_module(_mod)
 
 
 class TestRegistryStructure:
-    def test_registry_has_21_entries(self):
-        """4 core + 17 studio = 21 total (V10.35.0: +2 for epub + quote_bank)."""
-        assert len(_mod.OUTPUT_REGISTRY) == 21
+    def test_registry_has_24_entries(self):
+        """7 core + 17 studio = 24 total.
+
+        V0.7.2 (wizard rework ④, B8): +3 core — executive_summary,
+        thorough_summary, compact_summaries — so the registry-driven
+        enumeration (selected_output_names) covers every wizard output
+        flag."""
+        assert len(_mod.OUTPUT_REGISTRY) == 24
 
     def test_core_outputs_count(self):
-        assert len(_mod.get_core_outputs()) == 4
+        assert len(_mod.get_core_outputs()) == 7  # V0.7.2: +exec/thorough/compact
 
     def test_studio_outputs_count(self):
         assert len(_mod.get_studio_outputs()) == 17  # V10.35.0: +2 epub + quote_bank
 
     def test_core_keys(self):
         keys = [o.key for o in _mod.get_core_outputs()]
-        assert keys == ["summaries", "keypoints", "simplified_keypoints", "docx"]
+        assert keys == [
+            "summaries",
+            "executive_summary",  # V0.7.2
+            "thorough_summary",  # V0.7.2
+            "keypoints",
+            "simplified_keypoints",
+            "compact_summaries",  # V0.7.2
+            "docx",
+        ]
+
+    def test_every_core_output_carries_wizard_attr(self):
+        """V0.7.2 (B8): the registry covers every wizard output flag —
+        core AND studio — so the enumeration can never drift."""
+        for o in _mod.get_core_outputs():
+            assert o.wizard_attr, f"{o.key}: core output without wizard_attr"
 
     def test_studio_keys_include_v10_20_21_35(self):
         """The V10.20.0/V10.21.0/V10.35.0 outputs must be present."""
@@ -83,6 +102,12 @@ class TestAccessors:
         o = _mod.get_output_by_key("briefing")
         assert o is not None
         assert o.label == "Executive Briefing"
+
+    def test_get_output_by_key_found_new_core(self):
+        """V0.7.2: the three registry additions look up correctly."""
+        for key in ("executive_summary", "thorough_summary", "compact_summaries"):
+            o = _mod.get_output_by_key(key)
+            assert o is not None and o.is_core and o.wizard_attr
 
     def test_get_output_by_key_not_found(self):
         assert _mod.get_output_by_key("nonexistent") is None

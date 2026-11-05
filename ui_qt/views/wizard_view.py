@@ -59,6 +59,12 @@ from controller import Controller
 from core.common.progress_events import parse_progress_line
 from core.models import ConversionResult
 
+# V0.7.2 (wizard rework ④, B8): the start-log's outputs line enumerates
+# through the registry, exactly like Step 8's review line — one source,
+# zero drift (the audit found 9-10 newer outputs silently omitted from
+# this log too, §3 B8).
+from core.outputs.registry import selected_output_names
+
 # V0.7.0 (wizard rework ②, item 2a): the stage-chip header — the 10
 # steps group into 5 named stages (SOURCE · OUTPUTS · MODELS · TUNING ·
 # REVIEW). Presentation only: every step keeps its identity (D1).
@@ -865,35 +871,11 @@ class WizardView(QDialog):
             f"  Extract figures: {s.extract_figure_text}, Tables: {s.extract_tables}", "INFO"
         )
         # Outputs
-        outs = []
-        if s.generate_summaries and s.include_executive_summary:
-            outs.append("exec_summary")
-        if s.generate_summaries and s.include_thorough_summary:
-            outs.append("thorough_summary")
-        if s.include_keypoints:
-            outs.append("keypoints")
-        if s.simplified_keypoints_enabled:
-            outs.append("simplified_keypoints")
-        if s.generate_docx:
-            outs.append("docx")
-        if s.outputs_briefing:
-            outs.append("briefing")
-        if s.outputs_podcast:
-            outs.append("podcast_script")
-        if s.outputs_tts:
-            outs.append("podcast_audio")
-        if s.outputs_flashcards:
-            outs.append("flashcards")
-        if s.outputs_packets:
-            outs.append("packets")
-        if s.outputs_obsidian:
-            outs.append("obsidian")
-        if s.outputs_study_guide:
-            outs.append("study_guide")
-        if s.outputs_social:
-            outs.append("social")
-        if s.outputs_mindmap:
-            outs.append("mindmap")
+        # V0.7.2 (wizard rework ④, B8): registry-driven — every
+        # non-deprecated selected output is logged (previously
+        # qa/glossary/evidence/epub/compact… never appeared). The TTS
+        # name honestly says it is built from the briefing (B9).
+        outs = selected_output_names(s)
         log.append(f"  Outputs: {', '.join(outs) if outs else '(none)'}", "INFO")
         # Models
         log.append(f"  Summarization model: {s.summarisation_model or '(default)'}", "INFO")

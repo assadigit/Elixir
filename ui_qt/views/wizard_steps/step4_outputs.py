@@ -35,8 +35,13 @@ class Step4Outputs(WizardStep):
     in the shared registry).
 
     V0.6.8 (audit B19): the counts were corrected — the old docstring
-    said "15 + 4 = 19" while the registry (and this list) carry 21
-    OutputSpecs (17 studio + 4 core)."""
+    said "15 + 4 = 19" while the registry (and this list) carry more.
+
+    V0.7.2 (wizard rework ④, B8): the registry grew —
+    17 studio + 7 core = 24 total — so the Review line and the start-log
+    can enumerate EVERY selected output from it (the summary sub-flags
+    and compact summaries joined; selected_output_names is the one
+    reader both surfaces share)."""
 
     # V0.7.0 (item 2b): the numbered StepHeader grammar — the base
     # class inserts the badge+title+caption above the built content.
