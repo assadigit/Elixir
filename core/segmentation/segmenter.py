@@ -5,7 +5,9 @@ manual segmentation override, and support for pre‑located TOC entries.
 NEW in this version (Phase 4 + Sprint 2):
   - Accepts TOC entries as TOCResult from toc_extractor.locate_headings().
   - Uses rapidfuzz + page‑window search (with fallback to difflib).
-  - Priority: manual > located TOC > fuzzy TOC > heading pipeline > semantic > token.
+  - Priority: manual > located TOC > fuzzy TOC > heading pipeline (a monolithic
+    single-segment result is rejected as no-structure, V0.7.1 3c) > semantic >
+    page-group blocks (V0.7.1 3c) > token.
   - All existing heuristics (keyword overlap, same‑chapter merge) preserved.
   - Confidence‑based filtering – now lower threshold (0.3) to keep more sections.
   - Academic‑aware merging: lowers MIN_SEGMENT_TOKENS to 80 for academic papers.
@@ -31,6 +33,7 @@ from core.models import ConversionRequest, Segment, SegmentStrategy, TOCEntry, T
 from core.pdf.toc_extractor import TocExtractor
 from core.postprocess.page_marker import extract_page_markers
 from core.segmentation.heading_segmenter import HeadingSegmenter
+from core.segmentation.page_group_segmenter import PageGroupSegmenter
 from core.segmentation.semantic_segmenter import SemanticSegmenter
 from core.segmentation.token_segmenter import TokenSegmenter
 from utils.logging import get_main_logger
@@ -289,6 +292,9 @@ class Segmenter:
         self.heading_segmenter = HeadingSegmenter(request, log_callback)
         self.semantic_segmenter = SemanticSegmenter(request, log_callback)
         self.token_segmenter = TokenSegmenter(request)
+        # V0.7.1 (wizard rework ③, item 3c / D5): the page-group block
+        # chunker — AUTO-cascade fallback between semantic and tokens.
+        self.page_group_segmenter = PageGroupSegmenter(request, log_callback)
 
         # Normalise toc_entries into a list of TOCEntry objects (with optional line)
         self.toc_entries = self._normalise_toc_entries(toc_entries)
@@ -1856,6 +1862,24 @@ class Segmenter:
 
         return segs
 
+    def _is_degenerate_heading_result(self, segments: list[Segment], total_pages: int) -> bool:
+        """V0.7.1 (item 3c / D5): the no-structure signature.
+
+        True when the heading pipeline's answer is ONE segment spanning
+        more than 60% of the book — HeadingSegmenter's trailing catch-all
+        (default name 'Introduction'), i.e. no chapter boundary was ever
+        found. Content-agnostic: the 0.6·total_pages criterion is the
+        file's existing monster-segment threshold (V18.20.4.10) applied
+        at acceptance time instead of as a post-hoc warning.
+        """
+        if len(segments) != 1:
+            return False
+        if total_pages <= 0:
+            return False
+        only = segments[0]
+        span = (only.end_page or 0) - (only.start_page or 0) + 1
+        return span > 0.6 * total_pages
+
     # ─────────────────────────────────────────────────────────────────────────
     # Main entry point (Phase 2.2 – Priority Cascade with located TOC support)
     # ─────────────────────────────────────────────────────────────────────────
@@ -1966,7 +1990,8 @@ class Segmenter:
                     )
 
         self.log(
-            "[Segmenter] AUTO strategy: Priority Cascade (Located TOC \u2192 TOC \u2192 Heading \u2192 Semantic \u2192 Token).",
+            "[Segmenter] AUTO strategy: Priority Cascade (Located TOC → TOC "
+            "→ Heading → Semantic → Page-groups → Token).",
             "INFO",
         )
 
@@ -2041,11 +2066,26 @@ class Segmenter:
         # 3. Heading-based (pattern + H1 + plain-text detection)
         self.log("[Segmenter] Attempting heading-based segmentation…", "INFO")
         segments = self._heading_pipeline(markdown_text, total_pages, page_markers)
-        if segments:
+        # V0.7.1 (item 3c / D5): the degenerate-result gate. HeadingSegmenter
+        # always returns ≥1 segment (its trailing catch-all), so "heading
+        # produced something" is not evidence of structure: a SINGLE segment
+        # spanning most of the book is the "no chapter structure found"
+        # signature (the user then eats the monster-segment map-reduce on
+        # one giant blob). The file's own 0.6·total_pages criterion (the
+        # chapter-level monster gate, V18.20.4.10) decides; degenerate →
+        # fall through to semantic → page-groups → tokens.
+        if segments and not self._is_degenerate_heading_result(segments, total_pages):
             self.log(
                 f"[Segmenter] Heading-based produced {len(segments)} segments – using it.", "INFO"
             )
             return segments
+        if segments:
+            self.log(
+                "[Segmenter] Heading-based produced a single monolithic segment "
+                "(spans >60% of the book) — no chapter structure found; "
+                "falling through to the later stages.",
+                "INFO",
+            )
 
         # 4. Semantic (LLM-based)
         if self.request.enable_semantic_segmentation:
@@ -2056,6 +2096,27 @@ class Segmenter:
                     f"[Segmenter] Semantic produced {len(segments)} segments – using it.", "INFO"
                 )
                 return segments
+
+        # 4.5 Page-group blocks (V0.7.1, item 3c / D5) — the first real
+        # reader of chunk_by_page_groups + page_group_size: when no
+        # structural or semantic segmentation produced segments, the
+        # pages are chunked into N-page blocks (paragraph boundaries
+        # respected) BEFORE the raw fixed-token chunker. The D5 wiring:
+        # behavior first, UI in the same phase.
+        if self.request.chunk_by_page_groups:
+            self.log("[Segmenter] Attempting page-group block segmentation…", "INFO")
+            segments = self.page_group_segmenter.segment(markdown_text, total_pages, page_markers)
+            if segments:
+                self.log(
+                    f"[Segmenter] Page-groups produced {len(segments)} blocks – using it.",
+                    "INFO",
+                )
+                return segments
+            self.log(
+                "[Segmenter] Page-groups produced no blocks (no page markers?) — "
+                "falling back to TOKEN.",
+                "WARNING",
+            )
 
         # 5. Token-based (fallback)
         self.log("[Segmenter] Falling back to token-based segmentation.", "INFO")

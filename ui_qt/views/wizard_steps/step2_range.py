@@ -114,23 +114,63 @@ class Step2Range(WizardStep):
         self._selected_chapters: list[str] | None = None
         lay.addWidget(chapter_box)
 
-        # Segmentation
+        # Segmentation — the D5 UI (V0.7.1 item 3c): the honest
+        # processing-blocks row. The old "Page group size" spin was a
+        # dead control (audit §W4: logged and ignored); it is now wired
+        # to the PageGroupSegmenter fallback — 0 = AUTO (measured from
+        # the book's page density), 4-25 = manual override.
         seg_box = QGroupBox("Segmentation")
         seg_lay = QVBoxLayout(seg_box)
         seg_lay.setContentsMargins(10, 10, 10, 8)
         seg_lay.setSpacing(6)
 
-        group_row = QHBoxLayout()
-        group_row.setSpacing(8)
+        self.blocks_auto_cb = QCheckBox(
+            "Auto — block size measured from this book (typically ≈ 8 pages)"
+        )
+        self.blocks_auto_cb.setChecked(self.state.page_group_size == 0)
+        self.blocks_auto_cb.setToolTip(
+            "When no chapters, table-of-contents entries, or headings can "
+            "be detected, the pages are grouped into multi-page blocks. "
+            "Auto sizes each block to roughly 4,000-6,000 tokens (usually "
+            "about 8 pages for a normal book)."
+        )
+        self.blocks_auto_cb.toggled.connect(self._on_blocks_auto_changed)
+        seg_lay.addWidget(self.blocks_auto_cb)
+
+        override_row = QHBoxLayout()
+        override_row.setSpacing(8)
+        override_lbl = QLabel("Pages per block:")
+        override_lbl.setEnabled(False)
+        self._override_lbl = override_lbl
         self.group_spin = QSpinBox()
-        self.group_spin.setRange(1, 100)
-        self.group_spin.setValue(self.state.page_group_size)
-        group_row.addWidget(QLabel("Page group size:"))
-        group_row.addWidget(self.group_spin)
-        group_row.addStretch()
-        seg_lay.addLayout(group_row)
+        self.group_spin.setRange(4, 25)
+        _persisted = self.state.page_group_size
+        self.group_spin.setValue(8 if _persisted <= 0 else min(25, max(4, _persisted)))
+        self.group_spin.setEnabled(not self.blocks_auto_cb.isChecked())
+        self.group_spin.setToolTip(
+            "Manual override: how many pages each block covers (4-25). "
+            "Used only when no chapter structure can be detected."
+        )
+        override_row.addWidget(override_lbl)
+        override_row.addWidget(self.group_spin)
+        override_row.addStretch()
+        seg_lay.addLayout(override_row)
+
+        blocks_hint = QLabel(
+            "Blocks are used only when no chapter structure can be detected — "
+            "pages are grouped into multi-page blocks, never arbitrary token slices."
+        )
+        blocks_hint.setObjectName("Caption")
+        blocks_hint.setWordWrap(True)
+        seg_lay.addWidget(blocks_hint)
         lay.addWidget(seg_box)
         lay.addStretch()
+
+    def _on_blocks_auto_changed(self, checked: bool) -> None:
+        """V0.7.1 (3c): Auto checked → the override spin is disabled and
+        0 (AUTO) flows to the request; unchecked → manual 4-25."""
+        self.group_spin.setEnabled(not checked)
+        self._override_lbl.setEnabled(not checked)
 
     def _on_all_changed(self) -> None:
         all_pages = self.all_pages_cb.isChecked()
@@ -214,6 +254,10 @@ class Step2Range(WizardStep):
         else:
             self.state.page_range_start = self.start_spin.value()
             self.state.page_range_end = self.end_spin.value()
-        self.state.page_group_size = self.group_spin.value()
+        # V0.7.1 (3c): 0 = AUTO (the backend measures the block size);
+        # a manual 4-25 overrides it.
+        self.state.page_group_size = (
+            0 if self.blocks_auto_cb.isChecked() else self.group_spin.value()
+        )
         # Store chapter selection in the state's to_ui_data via a dynamic attr
         self.state.selected_chapters = self._selected_chapters

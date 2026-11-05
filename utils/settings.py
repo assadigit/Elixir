@@ -225,7 +225,9 @@ class Settings:
                 "strategy": "auto",
                 "custom_keywords": ["فصل", "بخش", "قانون", "درس", "باب"],
                 "custom_regex_patterns": [],
-                "page_group_size": 10,
+                # V0.7.1 (wizard rework ③, 3c / D5): 0 = AUTO block size
+                # (measured page density → 4-25 pages); positive = manual.
+                "page_group_size": 0,
                 "token_limit": 2000,
                 "enable_semantic": True,
                 "chunk_by_page_groups": True,

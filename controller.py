@@ -754,7 +754,11 @@ class Controller:
             True,
             None,
         ),
-        ("page_group_size", "page_group_size", "segmentation.page_group_size", 10, None),
+        # V0.7.1 (wizard rework ③, 3c / D5): 0 = AUTO block size; a
+        # positive value is the manual override (PageGroupSegmenter reads
+        # it — the field's first real consumer after the audit found it
+        # vestigial, §W4).
+        ("page_group_size", "page_group_size", "segmentation.page_group_size", 0, None),
         (
             "token_limit_per_segment",
             "token_limit_per_segment",

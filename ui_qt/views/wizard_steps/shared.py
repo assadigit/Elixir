@@ -37,7 +37,10 @@ class WizardState:
     # Step 2: Range
     page_range_start: int | None = None
     page_range_end: int | None = None
-    page_group_size: int = 10
+    # V0.7.1 (wizard rework ③, item 3c / D5): 0 = AUTO block size
+    # (computed from the measured page token density by the backend);
+    # a positive int is the manual override (the Step-2 spin, 4-25).
+    page_group_size: int = 0
     # Step 3: OCR
     use_llm_ocr: bool = True
     force_ocr_all_pages: bool = False

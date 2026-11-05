@@ -262,7 +262,12 @@ class ConversionRequest:
     segment_strategy: str | SegmentStrategy = "auto"
     custom_keywords: list[str] = field(default_factory=list)
     custom_regex_patterns: list[str] = field(default_factory=list)
-    page_group_size: int = 10
+    # V0.7.1 (wizard rework ③, item 3c / D5): 0 = AUTO — the block size
+    # is computed from the measured page token density (target ≈ 5,000
+    # tokens/block, clamped 4-25 pages); any positive int is the manual
+    # override. Read by PageGroupSegmenter (the cascade's pre-token
+    # fallback) — the field's first real consumer (audit §W4: vestigial).
+    page_group_size: int = 0
     chunk_by_page_groups: bool = True
     token_limit_per_segment: int = 1200
     enable_semantic_segmentation: bool = True
