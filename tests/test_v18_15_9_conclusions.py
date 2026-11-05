@@ -298,8 +298,13 @@ class TestV18_15_9_1UIFixes:
         if not _theme_path.exists():
             pytest.skip("theme.py not found")
         _src = _theme_path.read_text(encoding="utf-8")
-        # Find the QPushButton#Primary block + verify outline: none
+        # Find the QPushButton#Primary block + verify outline: none.
+        # V0.7.6 pin refresh: the block is parsed to its CLOSING BRACE,
+        # not a fixed 500-char window — the block grew past 500 chars
+        # (the M2 visual-fidelity passes added padding/font lines and the
+        # multi-line focus-rectangle comment), pushing the outline rule
+        # outside the window while remaining present and in-force.
         _primary_idx = _src.find("QPushButton#Primary")
         assert _primary_idx >= 0, "QPushButton#Primary block not found"
-        _block = _src[_primary_idx : _primary_idx + 500]
+        _block = _src[_primary_idx : _src.find("}", _primary_idx)]
         assert "outline: none" in _block, "outline: none not in Primary button block"
