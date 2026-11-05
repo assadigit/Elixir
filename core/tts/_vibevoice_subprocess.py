@@ -23,6 +23,21 @@ import sys
 import traceback
 from pathlib import Path
 
+# V0.7.6: source-mode bootstrap. This script is spawned as a bare
+# ``python core/tts/_vibevoice_subprocess.py`` child; sys.path[0] is the
+# script's own directory (core/tts/), so the top-level ``utils`` package
+# (repo root) is NOT importable unless the parent happened to export
+# PYTHONPATH. The V0.6.64 user_data_dir import below made every
+# source-mode spawn die at import time (ModuleNotFoundError: No module
+# named 'utils') — the engine then waited the full load timeout for a
+# ready handshake that could never arrive (VibeVoice hard-broken on
+# source installs since V0.6.64; caught by the three live-protocol
+# tests, previously misread as rig variance). Frozen (PyInstaller)
+# builds never reach this line — the engine fails soft before spawning.
+_REPO_ROOT = str(Path(__file__).resolve().parents[2])
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
 from utils.settings import user_data_dir
 
 logger = logging.getLogger(__name__)
