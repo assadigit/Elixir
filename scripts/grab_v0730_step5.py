@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from PySide6.QtWidgets import QApplication, QComboBox  # noqa: E402
+from PySide6.QtWidgets import QApplication  # noqa: E402
 
 
 class _FakeSignal:
@@ -76,9 +76,7 @@ def main() -> int:
 
     # Populate the combos through the real main-thread slot (the seeded
     # last-used picks are already selected; the list confirms them).
-    step._on_models_loaded(
-        ["Ternary-Bonsai-2-27B", "gemma3:12b", "qwen3-vl:8b", "phi-4"]
-    )
+    step._on_models_loaded(["Ternary-Bonsai-2-27B", "gemma3:12b", "qwen3-vl:8b", "phi-4"])
     # One manual-mode grab needs the spins visible/enabled state honest —
     # default grab keeps Auto ON (the shipping default).
 
