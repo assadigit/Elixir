@@ -403,6 +403,55 @@ class SummarizerCoverageMixin:
             bullet_cap=_lp_bullet_cap(_lp_csw(text)),
         )
 
+    def _run_coverage_close_loop(
+        self,
+        heading: str,
+        text: str,
+        content: str,
+        bullets: list[str],
+        exec_summary: str,
+        thorough_summary: str,
+        coverage: float,
+    ) -> tuple[list[str], float, int]:
+        """V0.7.5 (wizard rework ⑦, 7c / D11): the honest close-the-loop.
+
+        Delegates to ``coverage_loop.run_coverage_close_loop`` (the house
+        pattern — explicit deps, no context object): measure → below
+        target − 3 → targeted gap-fill on the missing concepts (the
+        existing Tier-2 machinery + prompts) → re-measure → up to 3
+        rounds → the honest terminal report. ONE target: the user
+        threshold (``self.coverage_threshold`` — the over-delivery
+        domination is gone, summarizer_init.py).
+        """
+        from core.summarisation.coverage_loop import run_coverage_close_loop
+
+        def _near_dup(bullet: str, existing: list[str]) -> bool:
+            # The Tier-2 insertion guard, fail-open on a guard crash (the
+            # F4 precedent — a gate crash is loud, never silently widening).
+            try:
+                from core.summarisation.dedup_service import get_dedup_service
+
+                return bool(get_dedup_service().is_near_duplicate(bullet, existing))
+            except Exception:
+                return False
+
+        return run_coverage_close_loop(
+            heading,
+            text,
+            content,
+            bullets,
+            exec_summary,
+            thorough_summary,
+            coverage,
+            coverage_threshold=self.coverage_threshold,
+            extract_keywords=self._extract_keywords,
+            targeted_gap_fill=self._targeted_gap_fill,
+            filter_thinking_bullets=self._filter_thinking_bullets,
+            compute_coverage=self._compute_coverage,
+            is_near_duplicate=_near_dup,
+            log=self.log,
+        )
+
     def _extract_must_have_items(self, heading: str, text: str) -> list[str]:
         """V13.44.0 Idea #1: Pre-flight extraction of must-have items.
 

@@ -174,18 +174,14 @@ def gap_fill_concepts(
     # 2. The GPU is exhausted after B4 + B3 — gap-fill will return empty
     # 3. The coverage is already good — the summary is factually accurate
     _current_coverage = len(covered) / len(concepts) if concepts else 1.0
-    # V15.1.0: Use _effective_target (over-delivery target when enabled).
-    # Gap-fill keeps running until we reach the over-delivery target (92%
-    # by default), not just the minimum threshold (85%). The "most are
-    # likely garbage" comment from V13.40.5 is now gated behind a check
-    # that only applies when NOT over-delivering.
+    # V0.7.5 (wizard rework ⑦, 7c / D11): ONE target — the user threshold
+    # is THE target (the over-delivery target no longer inflates it; the
+    # note that used to print " (over-deliver target N%)" here is gone
+    # with the mechanism).
     if _current_coverage >= effective_target:
-        _od_note = ""
-        if overdeliver_enabled and overdeliver_target > coverage_threshold:
-            _od_note = f" (over-deliver target {overdeliver_target:.0%})"
         log(
-            f"    \u23ed\ufe0f Gap-fill skipped \u2014 coverage {_current_coverage:.0%} \u2265 {effective_target:.0%}"
-            f"{_od_note}",
+            f"    \u23ed\ufe0f Gap-fill skipped \u2014 coverage {_current_coverage:.0%} \u2265 "
+            f"target {effective_target:.0%}",
             "INFO",
         )
         return bullets

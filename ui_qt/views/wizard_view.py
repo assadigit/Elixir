@@ -949,7 +949,14 @@ class WizardView(QDialog):
         # V0.7.5 (rework ⑦, 7b / D10): self-consistency is no longer
         # wizard-controlled — the line is gone (the Settings page owns it;
         # printing a wizard-unset value here was the lying-log pattern).
-        log.append(f"  Coverage threshold: {s.coverage_threshold}%", "INFO")
+        # V0.7.5 (rework ⑦, 7c / D11): the honest target semantics — the
+        # loop regenerates until MEASURED coverage reaches the level (±3,
+        # max 3 rounds); the start log says what the pipeline now does.
+        log.append(
+            f"  Coverage target: {s.coverage_threshold}% "
+            f"(regenerate to measured, ±3, max 3 rounds)",
+            "INFO",
+        )
         log.append(f"  Content filter: {s.enable_content_filter}", "INFO")
         log.append(
             f"  Max context: {s.max_context_tokens}, Max output: {s.max_output_tokens}", "INFO"

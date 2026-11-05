@@ -238,30 +238,25 @@ class AiQualitySection(QGroupBox):
         self._check_temp_warning(self.temp_slider.value())
 
         self.coverage_spin = labeled_spin(
-            int(controller.get_setting("summarisation.coverage_threshold", 50)),
-            minimum=30,
-            maximum=90,
-            suffix="%",
-        )
-        f.addRow("Coverage threshold", self.coverage_spin)
-        # V15.1.0: Over-delivery — keep improving coverage past minimum threshold
-        self.overdeliver_cb = labeled_checkbox(
-            "📈 Over-deliver: keep gap-filling past minimum threshold toward target",
-            checked=controller.get_setting("summarisation.overdeliver_enabled", True),
-        )
-        self.overdeliver_target_spin = labeled_spin(
-            int(controller.get_setting("summarisation.overdeliver_target", 100)),
-            minimum=85,
+            # V0.7.5 (rework ⑦, 7c): the fallback literal follows the schema
+            # (85 — the V0.7.3 unification; the stale 50 never fired on real
+            # installs but the literal was wrong-shaped) and the range now
+            # matches the wizard's Step-7b spin (0-100).
+            int(controller.get_setting("summarisation.coverage_threshold", 85)),
+            minimum=0,
             maximum=100,
             suffix="%",
         )
-        self.overdeliver_target_spin.setToolTip(
-            "V15.1.1: Target coverage when over-delivery is enabled. Default 100% "
-            "(the more the better). The pipeline keeps gap-filling until this target "
-            "is reached (or no more concepts to fill). Must be >= coverage threshold."
+        f.addRow("Coverage target", self.coverage_spin)
+        self.coverage_spin.setToolTip(
+            "The summaries are regenerated (targeted gap-fill, up to 3 rounds)\n"
+            "until MEASURED coverage reaches this level — ±3 points for\n"
+            "model randomness. Below-target chapters report what was\n"
+            "reached and what is still missing.\n\n"
+            "V0.7.5 (7c): the over-delivery controls are GONE — the user\n"
+            "threshold is THE target (the hidden 100% target that used to\n"
+            "dominate is removed)."
         )
-        f.addRow("Over-deliver target", self.overdeliver_target_spin)
-        f.addRow("", self.overdeliver_cb)
         # V15.1.1: B3 voting toggle (disabled by default — damages depth)
         self.b3_voting_cb = labeled_checkbox(
             "🔄 B3 multi-sample voting (EXPERIMENTAL — disabled by default. "
@@ -439,14 +434,10 @@ class AiQualitySection(QGroupBox):
         c.update_setting("summarisation.quality_mode", self.quality_combo.currentText())
         c.update_setting("summarisation.temperature", self.temp_slider.value() / 100)
         c.update_setting("summarisation.coverage_threshold", self.coverage_spin.value())
-        # V15.1.0: over-delivery settings
-        c.update_setting("summarisation.overdeliver_enabled", self.overdeliver_cb.isChecked())
-        _od_target = self.overdeliver_target_spin.value()
-        # Ensure target >= threshold
-        if _od_target < self.coverage_spin.value():
-            _od_target = self.coverage_spin.value()
-            self.overdeliver_target_spin.setValue(int(_od_target))
-        c.update_setting("summarisation.overdeliver_target", _od_target)
+        # V0.7.5 (rework ⑦, 7c): the over-delivery save block is GONE —
+        # the controls are removed (the hidden target no longer dominates;
+        # see the coverage tooltip). The settings keys stay in the schema
+        # as inert legacy (nothing reads them into behavior anymore).
         c.update_setting("summarisation.b3_voting_enabled", self.b3_voting_cb.isChecked())
         c.update_setting("summarisation.self_consistency", self.self_consist_cb.isChecked())
         c.update_setting("summarisation.academic_rigor", self.academic_cb.isChecked())
@@ -472,12 +463,9 @@ class AiQualitySection(QGroupBox):
         self.quality_combo.setCurrentText(c.get_setting("summarisation.quality_mode", "Balanced"))
         self.temp_slider.setValue(int(c.get_setting("summarisation.temperature", 0.2) * 100))
         self.temp_entry.setText(f"{self.temp_slider.value() / 100:.2f}")
-        self.coverage_spin.setValue(int(c.get_setting("summarisation.coverage_threshold", 50)))
-        # V15.1.0: over-delivery settings
-        self.overdeliver_cb.setChecked(c.get_setting("summarisation.overdeliver_enabled", True))
-        self.overdeliver_target_spin.setValue(
-            int(c.get_setting("summarisation.overdeliver_target", 100))
-        )
+        self.coverage_spin.setValue(int(c.get_setting("summarisation.coverage_threshold", 85)))
+        # V0.7.5 (rework ⑦, 7c): the over-delivery reload block is GONE
+        # with the controls (the hidden target no longer dominates).
         self.b3_voting_cb.setChecked(c.get_setting("summarisation.b3_voting_enabled", False))
         self.self_consist_cb.setChecked(c.get_setting("summarisation.self_consistency", False))
         self.academic_cb.setChecked(c.get_setting("summarisation.academic_rigor", False))

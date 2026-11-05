@@ -1,9 +1,9 @@
 {
   "schema": 1,
-  "generated_for_version": "0.5.9",
+  "generated_for_version": "0.7.4",
   "prompts_dir": "prompts/",
-  "file_count": 57,
-  "manifest_sha256": "887f44b504f4f1b9d70e892b7161b6c9a508c8d2975f852bb620be149504eb8c",
+  "file_count": 59,
+  "manifest_sha256": "0318d35b6de3d611e9227bf8ad56bfdffbc211aa9bb7d8b825b6def7609eeeda",
   "files": [
     {
       "path": "academic.md",
@@ -276,9 +276,19 @@
       "bytes": 4252
     },
     {
+      "path": "transcribe/transcript_combined.md",
+      "sha256": "c925012cfd5f17be29985e990dc55518d95924897e9d494c2b0dba6bd79a462d",
+      "bytes": 3272
+    },
+    {
       "path": "transcribe/transcript_notes.md",
-      "sha256": "d3c62621f33db3fc14b6b223e78a277f6e941b1221230ee1780cdc9a46b7a7fe",
-      "bytes": 1424
+      "sha256": "a73cecc91843310f80ebd342fa6b785fd6b85413ac2f2846d86bf7ac1d4dd743",
+      "bytes": 1811
+    },
+    {
+      "path": "transcribe/transcript_tutorial.md",
+      "sha256": "3a6107e4d5e6054efa51fad01abcdaff340b111426d24ec11c99617e15350f1e",
+      "bytes": 2478
     },
     {
       "path": "tts/normalize_en.md",

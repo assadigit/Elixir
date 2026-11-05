@@ -410,9 +410,15 @@ class SummarizerInitMixin:
         _od_target = float(getattr(self.request, "overdeliver_target", 1.0))
         self.overdeliver_target = max(self.coverage_threshold, min(_od_target, 1.0))
         self.b3_voting_enabled = bool(getattr(self.request, "b3_voting_enabled", False))
-        self._effective_target = (
-            self.overdeliver_target if self.overdeliver_enabled else self.coverage_threshold
-        )
+        # V0.7.5 (wizard rework ⑦, 7c / D11): ONE target — the user's
+        # threshold is THE target. The over-delivery domination (the
+        # default-on target 1.0 pushing the effective target to 100%
+        # regardless of the user's setting, audit §W12) is removed. The
+        # ±3 tolerance band + the 3-round close-the-loop
+        # (coverage_loop.py) carry the honesty instead. The overdeliver_*
+        # attrs stay (clamp tests pin them; gap_filler's frozen signature
+        # receives them) but no longer inflate the target.
+        self._effective_target = self.coverage_threshold
         self.content_preset = _preset
 
         # Academic Rigor flag

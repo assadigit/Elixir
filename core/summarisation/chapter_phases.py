@@ -1545,17 +1545,15 @@ class SummarizerChapterPhasesMixin:
         # gap-fill + over-delivery + the 3-Tier Guarantee below.
 
         # ── V13.32.8: 3-Tier Coverage Guarantee System ──────────────────
-        # V15.1.0: Use _effective_target (over-delivery target when enabled,
-        # falls back to coverage_threshold). This is the "don't settle" logic:
-        # if user set 85% but over-delivery target is 92%, we keep gap-filling
-        # until 92% (or no more concepts to fill).
+        # V0.7.5 (wizard rework ⑦, 7c / D11): ONE target — the user's
+        # threshold is THE target (the over-delivery domination that
+        # pushed the effective target to 100% is gone,
+        # summarizer_init.py:413-415 pre-rework; with it died the
+        # over-delivery note this block used to print).
         if coverage < self._effective_target:
-            _od_note = ""
-            if self.overdeliver_enabled and self.overdeliver_target > self.coverage_threshold:
-                _od_note = f" (over-deliver: floor {self.coverage_threshold:.0%} → target {self.overdeliver_target:.0%})"
             self.log(
-                f"    📈 Coverage {coverage:.0%} < effective target {self._effective_target:.0%}"
-                f"{_od_note} — applying 3-Tier Guarantee",
+                f"    📈 Coverage {coverage:.0%} < target {self._effective_target:.0%} "
+                f"— applying 3-Tier Guarantee",
                 "INFO",
             )
             coverage = self._apply_3tier_coverage(
@@ -1868,53 +1866,32 @@ class SummarizerChapterPhasesMixin:
                         )
                         parsed["bullet_points"] = bullets
 
-        # ── Final coverage check ─────────────────────────────────────────────
+        # ── Final coverage: the honest close-the-loop ─────────────────────
         # Sanitize bullets — ensure all items are strings (academic-rigor JSON
         # parsing can leave dicts in the list, which crashes str.join).
         bullets = [str(b) if not isinstance(b, str) else b for b in bullets if b]
         final_summary = f"{exec_sum} {' '.join(bullets)} {thorough}"
         coverage = self._compute_coverage(content, final_summary)
 
-        # Adaptive coverage threshold — start at the
-        # configured threshold (now 70%+ by default), but after 3 retries,
-        # accept best-effort rather than looping forever.  change:
-        # the floor is raised from 50% → 60%, and when best-effort is accepted
-        # BELOW the 70% target, the warning explicitly says so (no silent
-        # acceptance of low coverage).  This honours the "70% minimum" goal
-        # while still terminating on hard books.
-        if not hasattr(self, "_coverage_retry_counts"):
-            self._coverage_retry_counts = {}
-        chapter_retry_key = heading[:50]
-        self._coverage_retry_counts[chapter_retry_key] = (
-            self._coverage_retry_counts.get(chapter_retry_key, 0) + 1
+        # V0.7.5 (wizard rework ⑦, 7c / D11): ONE target — the user
+        # threshold is THE target. The over-delivery domination (default
+        # target 1.0 pushing the effective target to 100% regardless of
+        # the user's setting) and the t−0.10 best-effort acceptance floor
+        # (max(0.60, t−0.10), WARNING-only) that lived in this block are
+        # GONE. In their place: the close-the-loop — measure (the
+        # existing concept-coverage metric) → below target − 3 →
+        # targeted gap-fill reprompt on the missing concepts (the
+        # existing Tier-2 machinery + prompts) → re-measure → up to 3
+        # rounds (cost-bounded) → the honest terminal report
+        # ("Coverage 87% — target met" / "Reached 83% after 3 attempts;
+        # remaining gaps: …"). Content-agnostic (Rule 1): the trigger
+        # list comes from the runtime keyword extractor only.
+        bullets, coverage, _cov_rounds = self._run_coverage_close_loop(
+            heading, text, content, bullets, exec_sum, thorough, coverage
         )
-        retry_count = self._coverage_retry_counts[chapter_retry_key]
-
-        effective_threshold = self.coverage_threshold
-        if retry_count > 3:
-            # floor at 60% (was 50%) — never silently accept below that.
-            effective_threshold = max(0.60, self.coverage_threshold - 0.10)
-            if coverage < 0.70:
-                self.log(
-                    f"    ⚠️ Coverage at {coverage:.0%} after {retry_count} retries — "
-                    f"BELOW the 70% target. Accepting best-effort to avoid "
-                    f"infinite retries, but this chapter needs manual review.",
-                    "WARNING",
-                )
-            else:
-                self.log(
-                    f"    📉 Coverage at {coverage:.0%} after {retry_count} retries — "
-                    f"accepting best effort (threshold {self.coverage_threshold:.0%})",
-                    "WARNING",
-                )
-
-        if coverage < effective_threshold:
-            self.log(
-                f"    ⚠️ Final coverage {coverage:.0%} below {effective_threshold:.0%} threshold",
-                "WARNING",
-            )
-        else:
-            self.log(f"    ✅ Final coverage {coverage:.0%}", "INFO")
+        parsed["bullet_points"] = bullets
+        final_summary = f"{exec_sum} {' '.join(bullets)} {thorough}"
+        self._last_coverage = coverage  # the self-review skip decision reads it
         return (
             _inc_exec_lp,
             _inc_kp_lp,

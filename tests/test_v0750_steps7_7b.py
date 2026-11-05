@@ -644,3 +644,514 @@ class TestSelfConsistencyBackendUntouched:
     def test_settings_page_save_and_reload_survive(self):
         page = _src(_project_root / "ui_qt" / "settings" / "sections" / "ai_prompt_quality.py")
         assert '"summarisation.self_consistency", self.self_consist_cb.isChecked()' in page
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 7c — the honest coverage close-the-loop (D11): ONE target, ±3, ≤3 rounds
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestCoverageLoop:
+    """Function-level pins on coverage_loop.run_coverage_close_loop with
+    stub deps (deterministic); the REAL-Summarizer agreement test lives in
+    TestCoverageLoopRealSummarizer below."""
+
+    @staticmethod
+    def _deps(calls, gap_fill_result=None, never_improves=False):
+        from types import SimpleNamespace
+
+        from core.summarisation.coverage_loop import run_coverage_close_loop
+
+        log_lines: list[str] = []
+
+        def log(msg, level="INFO"):
+            log_lines.append(f"{level}: {msg}")
+
+        def extract_keywords(text, n=18):
+            # A fixed, content-agnostic keyword universe for the test.
+            return [f"kw{i}" for i in range(n)]
+
+        def targeted_gap_fill(heading, text, missing):
+            calls.append(list(missing))
+            if gap_fill_result is not None:
+                return list(gap_fill_result)
+            # Default: a bullet covering every missing concept (in the
+            # combined text they appear verbatim → the re-measure sees them).
+            return [f"- covers {k}" for k in missing]
+
+        def compute_coverage(source, summary):
+            # Deterministic proxy: coverage = fraction of keywords present.
+            present = sum(1 for i in range(18) if f"kw{i}" in summary)
+            return present / 18
+
+        def filter_thinking_bullets(bullets, *a, **k):
+            return list(bullets)
+
+        def is_near_duplicate(bullet, existing):
+            return False
+
+        return run_coverage_close_loop, SimpleNamespace(
+            log=log,
+            log_lines=log_lines,
+            extract_keywords=extract_keywords,
+            targeted_gap_fill=targeted_gap_fill,
+            compute_coverage=compute_coverage,
+            filter_thinking_bullets=filter_thinking_bullets,
+            is_near_duplicate=is_near_duplicate,
+        )
+
+    @staticmethod
+    def _run(coverage, threshold, **deps_kwargs):
+        fn, d = TestCoverageLoop._deps(deps_kwargs.pop("calls", []), **deps_kwargs)
+        bullets, cov, rounds = fn(
+            "Heading",
+            "text",
+            "content",
+            ["- existing bullet"],
+            "exec says kw0 and kw1",
+            "thorough says kw2",
+            coverage,
+            coverage_threshold=threshold,
+            extract_keywords=d.extract_keywords,
+            targeted_gap_fill=d.targeted_gap_fill,
+            filter_thinking_bullets=d.filter_thinking_bullets,
+            compute_coverage=d.compute_coverage,
+            is_near_duplicate=d.is_near_duplicate,
+            log=d.log,
+        )
+        return bullets, cov, rounds, d.log_lines
+
+    def test_below_target_triggers_gap_fill(self):
+        """Initial coverage below the band → the loop gap-fills the MISSING
+        concepts (only the ones absent from the combined summary)."""
+        calls: list = []
+        fn, d = self._deps(calls)
+        # Combined text covers kw0, kw1 (exec), kw2 (thorough) → 3/18 ≈ 17%.
+        bullets, cov, rounds, lines = self._run(0.17, 0.85, calls=calls)
+        assert rounds >= 1, "below target − 3 must trigger the loop"
+        assert calls, "the gap-fill machinery must have been called"
+        first_missing = calls[0]
+        assert "kw0" not in first_missing and "kw1" not in first_missing
+        assert "kw2" not in first_missing
+        assert "kw3" in first_missing, "the truly missing concept is targeted"
+        assert cov > 0.17, "the re-measure must see the filled concepts"
+
+    def test_three_round_bound(self):
+        """A gap-fill that never covers anything: the loop is bounded at
+        MAX_COVERAGE_ROUNDS (3) — never an infinite spin."""
+        calls: list = []
+        # The stub returns bullets that DON'T contain the kw tokens.
+        bullets, cov, rounds, lines = self._run(
+            0.10,
+            0.85,
+            calls=calls,
+            gap_fill_result=["- filler that names nothing"],
+        )
+        assert rounds == 3, "the 3-round bound (cost-bounded)"
+        assert len(calls) == 3, "one gap-fill batch per round, no more"
+        assert any(
+            "Reached" in ln and "after 3 attempts" in ln and ln.startswith("WARNING")
+            for ln in lines
+        ), "the honest exhausted report"
+
+    def test_tolerance_pm3_acceptance(self):
+        """D11: threshold 85 must deliver ≥ ~85% ± a few points — the band
+        is target − 3. 83% with target 85 is ACCEPTED (target met, within
+        ±3); 81% is NOT (0.81 < 0.82) and enters the loop."""
+        calls: list = []
+        # 83% with target 85% → within the band → 0 rounds, the met report.
+        _, cov, rounds, lines = self._run(0.83, 0.85, calls=calls)
+        assert rounds == 0 and not calls
+        assert any("Coverage 83% — target met" in ln for ln in lines), lines
+        assert any("within ±3 of the 85% target" in ln for ln in lines), lines
+
+        calls2: list = []
+        _, _, rounds2, lines2 = self._run(0.81, 0.85, calls=calls2)
+        assert rounds2 >= 1 and calls2, "0.81 < 0.85 − 0.03 → the loop runs"
+
+    def test_above_target_reports_met_immediately(self):
+        _, _, rounds, lines = self._run(0.92, 0.85)
+        assert rounds == 0
+        assert any("Coverage 92% — target met" in ln and ln.startswith("INFO") for ln in lines)
+        assert not any("WARNING" in ln for ln in lines)
+
+    def test_rounds_exhausted_report_names_the_remaining_gaps(self):
+        """The plan's honest form: 'Reached X% after 3 attempts; remaining
+        gaps: …' — the still-missing concepts are named."""
+        calls: list = []
+
+        # Cover only a fixed small set every round → coverage plateaus
+        # below the band; the exhausted report must list the gaps.
+        def plateau_fill(heading, text, missing):
+            return [f"- covers {k}" for k in missing[:2]]
+
+        fn, d = self._deps(calls)
+        d.targeted_gap_fill = plateau_fill
+        bullets, cov, rounds = fn(
+            "Heading",
+            "text",
+            "content",
+            [],
+            "exec",
+            "thorough",
+            0.05,
+            coverage_threshold=0.95,
+            extract_keywords=d.extract_keywords,
+            targeted_gap_fill=d.targeted_gap_fill,
+            filter_thinking_bullets=d.filter_thinking_bullets,
+            compute_coverage=d.compute_coverage,
+            is_near_duplicate=d.is_near_duplicate,
+            log=d.log,
+        )
+        assert rounds == 3
+        exhausted = [ln for ln in d.log_lines if "after 3 attempts" in ln]
+        assert exhausted, d.log_lines
+        assert "remaining gaps:" in exhausted[0]
+
+    def test_stalled_no_candidates_is_honest(self):
+        """Every sampled keyword already covered but the metric says below
+        target → the no-candidates report (the metric is the bottleneck,
+        not the loop) — never a fake 'target met'."""
+
+        from core.summarisation.coverage_loop import run_coverage_close_loop
+
+        lines: list[str] = []
+
+        def log(msg, level="INFO"):
+            lines.append(f"{level}: {msg}")
+
+        # Keywords: only kw0 (already in the combined text) → missing is
+        # empty on round 1 → the no-candidates break.
+        def extract_keywords(text, n=18):
+            return ["kw0"]
+
+        def compute_coverage(source, summary):
+            return 0.40  # the metric disagrees with the keyword sample
+
+        bullets, cov, rounds = run_coverage_close_loop(
+            "Heading",
+            "text",
+            "content",
+            ["- bullet mentioning kw0"],
+            "exec mentions kw0",
+            "thorough mentions kw0 too",
+            0.40,
+            coverage_threshold=0.85,
+            extract_keywords=extract_keywords,
+            targeted_gap_fill=lambda *a: [],
+            filter_thinking_bullets=lambda b, *a, **k: list(b),
+            compute_coverage=compute_coverage,
+            is_near_duplicate=lambda *a: False,
+            log=log,
+        )
+        assert rounds == 1
+        assert any("no fillable gaps remain" in ln and ln.startswith("WARNING") for ln in lines), (
+            lines
+        )
+        assert not any("target met" in ln for ln in lines), "no fake success"
+
+    def test_guards_drop_thinking_and_near_duplicates(self):
+        """The loop's insertion path mirrors the Tier-2 guards: a
+        thinking-contaminated bullet and a near-duplicate are dropped."""
+        from core.summarisation.coverage_loop import run_coverage_close_loop
+
+        lines: list[str] = []
+
+        def log(msg, level="INFO"):
+            lines.append(f"{level}: {msg}")
+
+        def extract_keywords(text, n=18):
+            return [f"kw{i}" for i in range(n)]
+
+        def compute_coverage(source, summary):
+            present = sum(1 for i in range(18) if f"kw{i}" in summary)
+            return present / 18
+
+        seen: list[str] = []
+
+        def filter_thinking_bullets(bullets, *a, **k):
+            seen.extend(bullets)
+            # Drop anything containing 'thinking:'; keep the rest.
+            return [b for b in bullets if "thinking:" not in b]
+
+        dropped_by_dup: list[str] = []
+
+        def is_near_duplicate(bullet, existing):
+            if "dup-me" in bullet:
+                dropped_by_dup.append(bullet)
+                return True
+            return False
+
+        bullets, cov, rounds = run_coverage_close_loop(
+            "Heading",
+            "text",
+            "content",
+            ["- existing bullet"],
+            "exec kw0",
+            "thorough kw1",
+            0.10,
+            coverage_threshold=0.30,
+            extract_keywords=extract_keywords,
+            targeted_gap_fill=lambda h, t, missing: [
+                f"- thinking: leak about {missing[0]}",
+                "- dup-me redundant bullet",
+                f"- covers {missing[0]}",
+            ],
+            filter_thinking_bullets=filter_thinking_bullets,
+            compute_coverage=compute_coverage,
+            is_near_duplicate=is_near_duplicate,
+            log=log,
+        )
+        assert seen, "the filter was consulted"
+        assert dropped_by_dup, "the near-dup guard fired"
+        assert all("thinking:" not in b for b in bullets)
+        assert all("dup-me" not in b for b in bullets)
+
+
+class TestOneTarget:
+    """The over-delivery domination is removed: the user threshold is THE
+    target everywhere (summarizer_init / chapter_phases / gap_filler)."""
+
+    def test_effective_target_source_pin(self):
+        init = _src(_project_root / "core" / "summarisation" / "summarizer_init.py")
+        assert "self._effective_target = self.coverage_threshold" in init
+        # The domination form is gone.
+        assert "self.overdeliver_target if self.overdeliver_enabled" not in init
+
+    def test_the_t_minus_10_floor_is_gone(self):
+        phases = _code_only(_project_root / "core" / "summarisation" / "chapter_phases.py")
+        assert "max(0.60" not in phases
+        assert "_coverage_retry_counts" not in phases
+        assert "self.coverage_threshold - 0.10" not in phases
+
+    def test_over_delivery_note_gone_from_gap_filler(self):
+        gf = _code_only(_project_root / "core" / "summarisation" / "gap_filler.py")
+        assert "over-deliver target" not in gf
+        assert "_od_note" not in gf
+
+    def test_3tier_trigger_line_is_honest(self):
+        phases = _code_only(_project_root / "core" / "summarisation" / "chapter_phases.py")
+        assert "over-deliver: floor" not in phases
+        assert "effective target" not in phases.replace("_effective_target", "X")
+
+    def test_settings_page_over_delivery_controls_gone(self):
+        page = _strip_comments(
+            _src(_project_root / "ui_qt" / "settings" / "sections" / "ai_prompt_quality.py")
+        )
+        for gone in ("overdeliver_cb", "overdeliver_target_spin", "Over-deliver"):
+            assert gone not in page, f"{gone} must be gone from the Settings page"
+
+    def test_settings_keys_stay_inert_legacy(self):
+        """The schema keys survive as inert legacy (nothing reads them into
+        behavior anymore) — documented, not purged, per the nllb_model
+        precedent; a future release may purge them."""
+        from utils.settings import Settings
+
+        defaults = Settings.__new__(Settings)._defaults()
+        summ = defaults["summarisation"]
+        assert summ["overdeliver_enabled"] is True  # inert legacy
+        assert summ["overdeliver_target"] == 100  # inert legacy
+
+
+class TestCoverageLoopRealSummarizer:
+    """The REAL-Summarizer agreement test (the V0.7.3 pattern): a hermetic
+    real Summarizer, the REAL close-the-loop, the REAL coverage metric and
+    keyword extractor — only the LLM sampler is stubbed."""
+
+    @pytest.fixture(autouse=True)
+    def _reset_runtime_singletons(self):
+        """Mirror of test_group_b_characterization's fixture (constructing a
+        Summarizer pollutes module-level singletons; reset after)."""
+        yield
+        try:
+            from core.summarisation import content_judge_impl
+
+            content_judge_impl._warned_embedding_disabled = False
+            content_judge_impl._warned_semantic_fallback = False
+            content_judge_impl._st_model = None
+        except Exception:
+            pass
+        try:
+            from core.summarisation import text_preprocessor_impl
+
+            text_preprocessor_impl._SPACY_NLP = None
+        except Exception:
+            pass
+        try:
+            from core.llm import llm_provider_impl
+
+            llm_provider_impl._keep_alive_cache = {}
+        except Exception:
+            pass
+
+    @staticmethod
+    def _fake_settings_class(overrides=None):
+        class _FakeSettings:
+            _DEFAULTS = {
+                "summarisation.provider": "ollama",
+                "local.http_timeout_sec": 600,
+                "local.chapter_deadline_sec": 600,
+                "model_temperatures": {},
+            }
+
+            def __init__(self, values=None):
+                self._values = dict(self._DEFAULTS)
+                if values:
+                    self._values.update(values)
+
+            def get(self, key, default=None):
+                return self._values.get(key, default)
+
+        return _FakeSettings(overrides)
+
+    def _summarizer(
+        self,
+        monkeypatch,
+        coverage_threshold=0.85,
+        od_enabled=True,
+        od_target=1.0,
+    ):
+        from pathlib import Path as _P
+
+        from core.models import ConversionRequest
+        from core.summarisation.summarizer import Summarizer
+
+        fake = self._fake_settings_class()
+        monkeypatch.setattr("core.summarisation.summarizer.Settings", lambda: fake)
+        monkeypatch.setattr("utils.settings.Settings", lambda: fake)
+
+        req = ConversionRequest(input_path=_P("/tmp/x.pdf"), output_dir=_P("/tmp/out"))
+        req.summarisation_model = "qwen2.5:14b"
+        req.coverage_threshold = coverage_threshold
+        req.overdeliver_enabled = od_enabled
+        req.overdeliver_target = od_target
+        req.include_keypoints = False  # no bullet expansion (no LLM calls)
+        req.include_thorough_summary = False  # no dedicated thorough call
+        return Summarizer(
+            request=req,
+            log_callback=lambda m, l="INFO": None,
+            language="en",
+            claim_extractor=None,
+        )
+
+    def test_one_target_even_with_overdelivery_on(self, monkeypatch):
+        """The domination-removed pin: over-delivery ON with target 1.0 —
+        the OLD code gave _effective_target=1.0; now it is the user
+        threshold."""
+        s = self._summarizer(monkeypatch, coverage_threshold=0.85)
+        assert s.overdeliver_enabled is True
+        assert s.overdeliver_target == 1.0
+        assert s._effective_target == s.coverage_threshold == 0.85
+
+    def test_phase_runs_the_real_loop(self, monkeypatch):
+        """The REAL _phase_thorough_and_coverage: a synthetic chapter whose
+        summary covers ~half the keywords; the sampler stub returns bullets
+        covering the missing concepts → the loop lifts MEASURED coverage to
+        the target and reports honestly."""
+        s = self._summarizer(monkeypatch, coverage_threshold=0.85)
+        lines: list[str] = []
+        s.log = lambda msg, level="INFO": lines.append(f"{level}: {msg}")
+
+        # A synthetic chapter: 18 keyword-bearing sentences.
+        content = " ".join(f"Topic kw{i} is discussed in depth here. " for i in range(18))
+        text = content
+        # The summary covers kw0-kw7 only (via exec) → low measured coverage.
+        parsed = {
+            "executive_summary": " ".join(f"Covers kw{i}." for i in range(8)),
+            "bullet_points": [],
+            "thorough_summary": "Also covers kw0 and kw1 in the thorough section.",
+        }
+
+        sampler_calls: list[list[str]] = []
+
+        def stub_gap_fill(heading, text_arg, missing):
+            sampler_calls.append(list(missing))
+            return [f"- Filled: covers {k} plainly." for k in missing[:6]]
+
+        s._targeted_gap_fill = stub_gap_fill
+
+        result = s._phase_thorough_and_coverage("Chapter 1", content, text, parsed)
+        (
+            _ie,
+            _ik,
+            _it,
+            _sw,
+            _th,
+            bullets,
+            coverage,
+            exec_sum,
+            final_summary,
+            thorough,
+        ) = result
+        assert sampler_calls, "the real loop must call the (stubbed) sampler"
+        assert coverage > 0 or not sampler_calls
+        # The combined summary now carries the stubbed fill bullets.
+        for k in sampler_calls[0][:3]:
+            assert f"covers {k}" in final_summary
+        # The honest terminal report fired (met or the honest failure —
+        # never silence).
+        assert any(
+            ("target met" in ln) or ("Reached" in ln) or ("no fillable gaps" in ln) for ln in lines
+        ), lines
+        # _last_coverage reflects the loop result (the self-review skip
+        # decision reads it).
+        assert s._last_coverage == coverage
+
+    def test_phase_within_band_skips_the_loop(self, monkeypatch):
+        """Coverage already inside the band → 0 rounds; the met report."""
+        s = self._summarizer(monkeypatch, coverage_threshold=0.85)
+        lines: list[str] = []
+        s.log = lambda msg, level="INFO": lines.append(f"{level}: {msg}")
+        # The combined summary carries the source VERBATIM → every keyword
+        # and concept the metric extracts from the source is present →
+        # measured coverage ≈ 1.0 → inside the band, the loop no-ops.
+        content = " ".join(f"Topic kw{i} is discussed in depth here. " for i in range(18))
+        parsed = {
+            "executive_summary": content,
+            "bullet_points": [],
+            "thorough_summary": content,
+        }
+
+        def boom(*a, **k):
+            raise AssertionError("the sampler must not fire inside the band")
+
+        s._targeted_gap_fill = boom
+        s._phase_thorough_and_coverage("Chapter 1", content, content, parsed)
+        assert any("target met" in ln for ln in lines), lines
+        assert not any("WARNING" in ln for ln in lines)
+
+
+class TestCoverageTruthInUI:
+    """7c item 3: Step 7b's spin says what the loop now really does."""
+
+    def test_step7b_label_and_caption(self):
+        src = _code_only(_STEP7B)
+        assert '"Coverage target:"' in src
+        assert "reprompt trigger" not in src, "the overstating label is gone"
+        raw = _src(_STEP7B)
+        assert "Regenerates until measured coverage reaches this level" in raw
+        assert "±3 for model randomness, max 3 rounds" in raw
+
+    def test_review_and_start_log_carry_the_target_semantics(self):
+        review = _src(_STEP8)
+        assert "Coverage target:" in review
+        assert "regenerate to measured, ±3, max 3 rounds" in review
+        wizard = _src(_WIZARD)
+        assert "Coverage target:" in wizard
+        assert "regenerate to measured, ±3, max 3 rounds" in wizard
+        assert "reprompt trigger" not in wizard
+
+    def test_settings_page_target_semantics(self):
+        page = _src(_project_root / "ui_qt" / "settings" / "sections" / "ai_prompt_quality.py")
+        assert 'f.addRow("Coverage target", self.coverage_spin)' in page
+        assert 'get_setting("summarisation.coverage_threshold", 85)' in page
+        assert "the over-delivery controls are GONE" in page
+
+    def test_constants_pinned(self):
+        from core.summarisation.coverage_loop import (
+            COVERAGE_TOLERANCE,
+            MAX_COVERAGE_ROUNDS,
+        )
+
+        assert MAX_COVERAGE_ROUNDS == 3
+        assert COVERAGE_TOLERANCE == 0.03

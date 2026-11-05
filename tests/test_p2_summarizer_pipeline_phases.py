@@ -665,37 +665,74 @@ class TestDeadlineShortCircuits:
 # ── 9. Coverage retry floor ─────────────────────────────────────────────────
 
 
-class TestCoverageRetryFloor:
-    def test_after_three_retries_below_70_warns(self, tmp_path):
+class TestCoverageCloseLoopExhaustion:
+    """V0.7.5 (wizard rework ⑦, 7c / D11): REPLACES TestCoverageRetryFloor.
+
+    The t−0.10 best-effort acceptance floor (max(0.60, t−0.10), the
+    "after N retries — accepting best effort" WARNING) is DELETED with the
+    over-delivery domination. The same scenarios now exercise the honest
+    close-the-loop (core/summarisation/coverage_loop.py): measure →
+    gap-fill the missing concepts → re-measure → up to 3 rounds → the
+    honest terminal report. Intent preserved: unreachable targets must
+    never be silently accepted as best-effort."""
+
+    def test_unreachable_target_reports_the_honest_failure(self, tmp_path):
         heading, source = golden_chapter()
         logs: list[tuple[str, str]] = []
         s = make_summarizer(tmp_path, request_fields={"coverage_threshold": 0.99}, log_lines=logs)
-        s._coverage_retry_counts = {heading[:50]: 3}  # next run → retry 4 > 3
         llm = ScriptedLLM()
 
         def responder(prompt, model=None, temperature=None, max_tokens=None):
             if MARKER_TIER2_GAPFILL in prompt:
-                return None  # Tier-2 gap fill fails (keeps the ladder short)
+                return None  # Tier-2 gap fill fails (the loop stalls honestly)
             return _ungrounded_response()
 
         llm.responder = responder
         llm.install(s)
         fresh_deadline(s)
         result = s._summarize_inner(heading, source)
-        assert_logged(logs, "BELOW the 70% target")
+        # The honest terminal report fired — one of the failure forms,
+        # never the old silent best-effort acceptance.
+        assert any(
+            frag in msg
+            for (_lvl, msg) in logs
+            for frag in (
+                "after 3 attempts",
+                "the gap-fill calls produced nothing usable",
+                "no fillable gaps remain",
+            )
+        ), [m for (_l, m) in logs][-25:]
+        # The deleted floor's strings never appear.
+        assert not any(
+            frag in msg
+            for (_lvl, msg) in logs
+            for frag in ("BELOW the 70% target", "accepting best effort")
+        )
         # The thin summary may be hard-rejected by the content judge AFTER
-        # the retry-floor warning — both outcomes are valid current behavior.
+        # the honest report — both outcomes are valid current behavior.
         assert result.success is False or result.success is True
 
-    def test_after_three_retries_accepting_best_effort(self, tmp_path):
+    def test_full_response_reports_the_honest_terminal(self, tmp_path):
         heading, source = golden_chapter()
         logs: list[tuple[str, str]] = []
         s = make_summarizer(tmp_path, request_fields={"coverage_threshold": 0.80}, log_lines=logs)
-        s._coverage_retry_counts = {heading[:50]: 3}
         ScriptedLLM(primary_response=_full_response(source)).install(s)
         fresh_deadline(s)
         s._summarize_inner(heading, source)
-        assert_logged(logs, "after 4 retries — accepting best effort")
+        # Whatever the measured coverage lands at, the terminal report is
+        # one of the honest forms (met, or the named failure) — never the
+        # old silent best-effort acceptance.
+        assert any(
+            frag in msg
+            for (_lvl, msg) in logs
+            for frag in (
+                "target met",
+                "after 3 attempts",
+                "the gap-fill calls produced nothing usable",
+                "no fillable gaps remain",
+            )
+        ), [m for (_l, m) in logs][-25:]
+        assert not any("accepting best effort" in msg for (_lvl, msg) in logs)
 
 
 # ── 10. Content judge crash / reject ────────────────────────────────────────
@@ -1240,7 +1277,22 @@ class TestPostchecksClean:
         source = "\n\n".join(CLEAN_SENTENCES)
         logs: list[tuple[str, str]] = []
         s = make_summarizer(tmp_path, log_lines=logs)
-        ScriptedLLM(primary_response=_full_response(source)).install(s)
+        # V0.7.5 (rework ⑦, 7c): the coverage close-the-loop now fires on
+        # this chapter (its measured coverage lands below the target band).
+        # Keep the test focused on ITS subject (the clean postchecks) by
+        # making the Tier-2 gap-fill prompts return None — the loop then
+        # stalls honestly and appends nothing (intent preserved; the canned
+        # primary response answering the gap-fill prompts was a test
+        # artifact, not the scenario under test).
+        llm = ScriptedLLM(primary_response=_full_response(source))
+
+        def responder(prompt, model=None, temperature=None, max_tokens=None):
+            if MARKER_TIER2_GAPFILL in prompt:
+                return None
+            return llm.primary_response
+
+        llm.responder = responder
+        llm.install(s)
         fresh_deadline(s)
         result = s._summarize_inner(heading, source)
         assert_logged(logs, "Post-checks: clean (no artifacts found)")

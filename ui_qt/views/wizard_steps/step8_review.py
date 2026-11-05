@@ -232,7 +232,13 @@ class Step8Review(WizardStep):
         # V0.7.5 (rework ⑦, 7b / D10): the self-consistency line is gone —
         # it is no longer wizard-controlled (the Settings page owns it;
         # printing a wizard-unset value here was the lying-review pattern).
-        lines.append(f"  Coverage threshold: {s.coverage_threshold}%")
+        # V0.7.5 (rework ⑦, 7c / D11): the honest target semantics — the
+        # loop regenerates until MEASURED coverage reaches the level (±3,
+        # max 3 rounds); the review says what the pipeline now does.
+        lines.append(
+            f"  Coverage target: {s.coverage_threshold}% "
+            f"(regenerate to measured, ±3, max 3 rounds)"
+        )
         lines.append(
             f"  Resume mode: {'yes — skip done chapters' if s.resume_enabled else 'no — reprocess all'}"
         )

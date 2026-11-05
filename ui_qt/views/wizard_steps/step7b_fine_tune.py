@@ -136,16 +136,34 @@ class Step7bFineTune(WizardStep):
         q_lay.addWidget(self.filter_cb)
         # V0.6.14 (single-model order): the heavy-model picker is retired.
         # Coverage threshold
+        # V0.7.5 (wizard rework ⑦, 7c / D11): the label stops overstating
+        # ("reprompt trigger" — the audit §W12 finding) and now tells the
+        # truth about the close-the-loop: the summaries are regenerated
+        # until MEASURED coverage reaches this level, ±3 for model
+        # randomness, max 3 rounds (core/summarisation/coverage_loop.py).
         cov_row = QHBoxLayout()
         cov_row.setSpacing(8)
         self.coverage_spin = QSpinBox()
         self.coverage_spin.setRange(0, 100)
         self.coverage_spin.setSuffix("%")
         self.coverage_spin.setValue(self.state.coverage_threshold)
-        cov_row.addWidget(QLabel("Coverage threshold (reprompt trigger):"))
+        self.coverage_spin.setToolTip(
+            "The summaries are regenerated (targeted gap-fill, up to 3 rounds)\n"
+            "until MEASURED coverage reaches this level — ±3 points for model\n"
+            "randomness. Chapters that end below target report what was\n"
+            "reached and what is still missing (the honest terminal report)."
+        )
+        cov_row.addWidget(QLabel("Coverage target:"))
         cov_row.addWidget(self.coverage_spin)
         cov_row.addStretch()
         q_lay.addLayout(cov_row)
+        self.coverage_caption = QLabel(
+            "Regenerates until measured coverage reaches this level — "
+            "±3 for model randomness, max 3 rounds."
+        )
+        self.coverage_caption.setObjectName("Caption")
+        self.coverage_caption.setWordWrap(True)
+        q_lay.addWidget(self.coverage_caption)
 
         # V7.7.0: Chapter-level resume — skip chapters with valid summaries
         self.resume_cb = QCheckBox(
