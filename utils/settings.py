@@ -1106,6 +1106,25 @@ class Settings:
             if "use_paddleocr" not in ocr:
                 ocr["use_paddleocr"] = False
 
+            # ── V0.7.7: drop the V0.7.0/V0.7.1-purged OCR dead keys from
+            # older settings files. ``ocr.auto_detect_scanned`` (log-only,
+            # never read) and ``ocr.force_ocr_all_pages`` (its full-OCR
+            # alias was purged at V0.7.1 — ``ocr.mode`` is the only reading
+            # axis) linger in every pre-V0.7.0 settings.json and trip two
+            # "Unknown setting" validator warnings on every app start
+            # forever. The V0.7.4 dead-key pattern (translation.outputs.
+            # packets / harakat_confident_only): pop them so legacy files
+            # self-clean on load (audit finding HY-1 — the warnings fired
+            # on this rig's own legacy file on every Settings() build).
+            for _ocr_dead_key in ("auto_detect_scanned", "force_ocr_all_pages"):
+                if _ocr_dead_key in ocr:
+                    del ocr[_ocr_dead_key]
+                    logger.info(
+                        "[Settings] Removed deprecated ocr.%s "
+                        "(purged at V0.7.0/V0.7.1; ocr.mode is the only OCR axis)",
+                        _ocr_dead_key,
+                    )
+
             # Ensure source_type and is_academic exist
             if "source_type" not in merged:
                 merged["source_type"] = "normal_book"
