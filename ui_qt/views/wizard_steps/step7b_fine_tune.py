@@ -42,14 +42,13 @@ logger = logging.getLogger(__name__)
 class Step7bFineTune(WizardStep):
     """Fine-tuning: post-processing, DOCX, quality, summarization limits, advanced doc."""
 
+    # V0.7.0 (item 2b): the numbered StepHeader grammar — the base
+    # class inserts the badge+title+caption above the built content.
+    STEP_HEADER = (8, "Fine-tuning", "Quality, limits, and post-processing knobs.")
+
     def _build(self) -> None:
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(14, 10, 14, 10)
         lay.setSpacing(10)
-
-        title = QLabel("Fine-tuning")
-        title.setObjectName("H2")
-        lay.addWidget(title)
 
         subtitle = QLabel(
             "All settings below use sensible defaults. Change them only if you need specific control."

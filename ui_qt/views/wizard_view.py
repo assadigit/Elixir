@@ -209,26 +209,36 @@ class WizardView(QDialog):
             self.stack.addWidget(s)
         root.addWidget(self.stack, 1)
 
-        # ── Navigation buttons ─────────────────────────────────────────
+        # ── Navigation buttons (V0.7.0 item 2b — the shell restyle) ────
+        # Cancel (ghost) left; ‹ Back (secondary) + Next › (primary) right;
+        # 40px+ click targets; 20px frame margins.
         nav = QWidget()
-        nav.setFixedHeight(46)  # V7.4.0: was 52
+        nav.setFixedHeight(56)
         nav_lay = QHBoxLayout(nav)
         nav_lay.setContentsMargins(20, 8, 20, 8)
         nav_lay.setSpacing(10)
 
         self.cancel_wizard_btn = QPushButton("Cancel")
+        self.cancel_wizard_btn.setMinimumHeight(40)
+        self.cancel_wizard_btn.setMinimumWidth(88)
         self.cancel_wizard_btn.setCursor(Qt.PointingHandCursor)
+        self.cancel_wizard_btn.setToolTip("Close the wizard without converting")
         self.cancel_wizard_btn.clicked.connect(self._cancel_wizard)
         nav_lay.addWidget(self.cancel_wizard_btn)
         nav_lay.addStretch()
 
-        self.back_btn = QPushButton("< Back")
+        self.back_btn = QPushButton("‹ Back")
+        self.back_btn.setObjectName("Secondary")
+        self.back_btn.setMinimumHeight(40)
+        self.back_btn.setMinimumWidth(88)
         self.back_btn.setCursor(Qt.PointingHandCursor)
         self.back_btn.clicked.connect(self._go_back)
         nav_lay.addWidget(self.back_btn)
 
-        self.next_btn = QPushButton("Next >")
+        self.next_btn = QPushButton("Next ›")
         self.next_btn.setObjectName("Primary")
+        self.next_btn.setMinimumHeight(40)
+        self.next_btn.setMinimumWidth(110)
         self.next_btn.setCursor(Qt.PointingHandCursor)
         self.next_btn.clicked.connect(self._go_next)
         nav_lay.addWidget(self.next_btn)
@@ -360,13 +370,16 @@ class WizardView(QDialog):
             self.cancel_wizard_btn.setVisible(False)
         elif self._current_step == 8:
             # Review step — show Start button
-            self.next_btn.setText("  🚀  Start")
+            # V0.7.0 (item 2b): the shell's nav grammar keeps the chevron;
+            # the control-label emoji goes (D9 — icons on controls land
+            # phase-by-phase, this one is the shell's own button).
+            self.next_btn.setText("Start ›")
             self.next_btn.setVisible(True)
             self.back_btn.setVisible(True)
             self.cancel_wizard_btn.setVisible(True)
             self.step8.refresh()
         else:
-            self.next_btn.setText("Next >")
+            self.next_btn.setText("Next ›")
             self.next_btn.setVisible(True)
             self.back_btn.setVisible(True)
             self.cancel_wizard_btn.setVisible(True)
@@ -1396,4 +1409,11 @@ class WizardView(QDialog):
     def refresh_theme(self) -> None:
         """Refresh theme-dependent styling."""
         self.stage_bar.refresh_theme()
+        # V0.7.0 (item 2b): every step's numbered StepHeader re-styles its
+        # badge for the new palette (the StepHeader.refresh_theme contract).
+        from ui_qt.components.step_header import StepHeader
+
+        for step in getattr(self, "steps", []):
+            for hdr in step.findChildren(StepHeader):
+                hdr.refresh_theme()
         self._update_step()

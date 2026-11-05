@@ -30,14 +30,13 @@ from ui_qt.views.wizard_steps.shared import WizardStep
 class Step9Logs(WizardStep):
     """Live progress + logs during conversion."""
 
+    # V0.7.0 (item 2b): the numbered StepHeader grammar — the base
+    # class inserts the badge+title+caption above the built content.
+    STEP_HEADER = (10, "Run", "Live progress and logs while Elixir works.")
+
     def _build(self) -> None:
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(14, 10, 14, 10)
         lay.setSpacing(10)
-
-        title = QLabel("Conversion in progress")
-        title.setObjectName("H2")
-        lay.addWidget(title)
 
         self.status_label = QLabel("Preparing...")
         self.status_label.setObjectName("Caption")

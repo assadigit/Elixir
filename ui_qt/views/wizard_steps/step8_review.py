@@ -35,14 +35,13 @@ class Step8Review(WizardStep):
     start_requested = Signal()
     edit_step_requested = Signal(int)  # step index to jump to
 
+    # V0.7.0 (item 2b): the numbered StepHeader grammar — the base
+    # class inserts the badge+title+caption above the built content.
+    STEP_HEADER = (9, "Review", "Check every setting before the run starts.")
+
     def _build(self) -> None:
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(14, 10, 14, 10)
         lay.setSpacing(10)
-
-        title = QLabel("Review all settings before starting")
-        title.setObjectName("H2")
-        lay.addWidget(title)
 
         warning = QLabel(
             "⚠️ Conversion is resource and time intensive. Please review every category below before clicking Start."

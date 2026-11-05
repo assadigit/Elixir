@@ -13,9 +13,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtWidgets import QWidget
+from PySide6.QtWidgets import QVBoxLayout, QWidget
 
 from controller import Controller
+from ui_qt.theme import SPACE
 
 # ════════════════════════════════════════════════════════════════════════════
 # Wizard State
@@ -230,7 +231,18 @@ class WizardState:
 
 
 class WizardStep(QWidget):
-    """Base class for wizard steps."""
+    """Base class for wizard steps.
+
+    V0.7.0 (rework item 2b — the shell restyle): every step carries a
+    numbered ``StepHeader`` (badge + title + plain-word caption) declared
+    as the ``STEP_HEADER = (number, title, caption)`` class attribute —
+    one visual grammar across all 10 steps. The base inserts the header
+    above the step's built content and applies the shell's consistent
+    20px frame margins, so subclasses drop their own ``H2`` title label
+    and set margins only if they truly need to deviate.
+    """
+
+    STEP_HEADER: tuple[int, str, str] | None = None
 
     def __init__(
         self, controller: Controller, state: WizardState, parent: QWidget | None = None
@@ -239,10 +251,34 @@ class WizardStep(QWidget):
         self.controller = controller
         self.state = state
         self._build()
+        self._install_step_header()
+        self._apply_shell_margins()
 
     def _build(self) -> None:
         """Override in subclasses to build the step UI."""
         pass
+
+    def _install_step_header(self) -> None:
+        """Insert the numbered StepHeader above the built content (2b)."""
+        if not self.STEP_HEADER:
+            return
+        # Local import: keeps the module import-light (the house pattern
+        # in this package — step modules import lazily too).
+        from ui_qt.components.step_header import StepHeader
+
+        lay = self.layout()
+        if not isinstance(lay, QVBoxLayout):
+            return
+        number, title, caption = self.STEP_HEADER
+        self._step_header = StepHeader(number, title, caption)
+        lay.insertWidget(0, self._step_header)
+
+    def _apply_shell_margins(self) -> None:
+        """The shell's consistent 20px frame margins (plan item 2b)."""
+        lay = self.layout()
+        if lay is None:
+            return
+        lay.setContentsMargins(SPACE.xxl, SPACE.lg, SPACE.xxl, SPACE.lg)
 
     def validate(self) -> tuple[bool, str]:
         """Validate the step. Returns (ok, error_message)."""

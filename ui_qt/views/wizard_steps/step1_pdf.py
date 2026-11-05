@@ -45,14 +45,17 @@ logger = logging.getLogger(__name__)
 class Step1Pdf(WizardStep):
     """PDF file selection + document type preset cards."""
 
+    # V0.7.0 (item 2b): the numbered StepHeader grammar — the base
+    # class inserts the badge+title+caption above the built content.
+    STEP_HEADER = (
+        1,
+        "Select your PDF",
+        "Pick the file, then choose how Elixir should read it — Auto suits most books.",
+    )
+
     def _build(self) -> None:
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(14, 10, 14, 10)
         lay.setSpacing(8)
-
-        title = QLabel("Select your PDF and document type")
-        title.setObjectName("H2")
-        lay.addWidget(title)
 
         # PDF file picker
         pdf_box = QGroupBox("PDF file")

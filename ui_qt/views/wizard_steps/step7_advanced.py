@@ -32,14 +32,13 @@ from ui_qt.views.wizard_steps.shared import WizardStep
 class Step7Advanced(WizardStep):
     """Advanced: segmentation, token limit, semantic, academic rigor."""
 
+    # V0.7.0 (item 2b): the numbered StepHeader grammar — the base
+    # class inserts the badge+title+caption above the built content.
+    STEP_HEADER = (7, "Advanced", "Segmentation and content filtering — the defaults are sensible.")
+
     def _build(self) -> None:
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(14, 10, 14, 10)
         lay.setSpacing(8)
-
-        title = QLabel("Advanced settings")
-        title.setObjectName("H2")
-        lay.addWidget(title)
 
         box = QGroupBox("Segmentation & quality")
         box_lay = QVBoxLayout(box)
@@ -72,7 +71,9 @@ class Step7Advanced(WizardStep):
         }
         self.strat_desc_label = QLabel(_STRAT_DESC.get(self.state.segment_strategy, ""))
         self.strat_desc_label.setWordWrap(True)
-        self.strat_desc_label.setStyleSheet(f"color: {theme_manager.palette.text_secondary}; font-size: 11px; padding: 2px 8px;")
+        self.strat_desc_label.setStyleSheet(
+            f"color: {theme_manager.palette.text_secondary}; font-size: 11px; padding: 2px 8px;"
+        )
         box_lay.addWidget(self.strat_desc_label)
         self.strat_combo.currentTextChanged.connect(
             lambda txt: self.strat_desc_label.setText(_STRAT_DESC.get(txt, ""))

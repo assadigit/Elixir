@@ -38,14 +38,13 @@ class Step4Outputs(WizardStep):
     said "15 + 4 = 19" while the registry (and this list) carry 21
     OutputSpecs (17 studio + 4 core)."""
 
+    # V0.7.0 (item 2b): the numbered StepHeader grammar — the base
+    # class inserts the badge+title+caption above the built content.
+    STEP_HEADER = (4, "Outputs", "Choose everything Elixir should produce.")
+
     def _build(self) -> None:
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(14, 10, 14, 10)
         lay.setSpacing(8)
-
-        title = QLabel("Select outputs to generate")
-        title.setObjectName("H2")
-        lay.addWidget(title)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)

@@ -34,14 +34,17 @@ from ui_qt.views.wizard_steps.shared import WizardStep
 class Step2Range(WizardStep):
     """Page range + page group size + auto-detect scanned + chapter selection."""
 
+    # V0.7.0 (item 2b): the numbered StepHeader grammar — the base
+    # class inserts the badge+title+caption above the built content.
+    STEP_HEADER = (
+        2,
+        "Pages & chapters",
+        "Process everything, a range, or pick chapters from the table of contents.",
+    )
+
     def _build(self) -> None:
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(14, 10, 14, 10)
         lay.setSpacing(8)
-
-        title = QLabel("Page range and segmentation")
-        title.setObjectName("H2")
-        lay.addWidget(title)
 
         # Page range
         range_box = QGroupBox("Page range")

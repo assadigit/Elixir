@@ -55,14 +55,13 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
     line budget.
     """
 
+    # V0.7.0 (item 2b): the numbered StepHeader grammar — the base
+    # class inserts the badge+title+caption above the built content.
+    STEP_HEADER = (5, "Models", "The local AI model that does the work.")
+
     def _build(self) -> None:
         lay = QVBoxLayout(self)
-        lay.setContentsMargins(14, 10, 14, 10)
         lay.setSpacing(8)
-
-        title = QLabel("Model selection")
-        title.setObjectName("H2")
-        lay.addWidget(title)
 
         # ── V0.4.20: scroll host ────────────────────────────────────
         # The step's content sizeHint is ~733px tall, but the V7.4.0
@@ -95,7 +94,9 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
             "gap-fill, judging. Choose where it runs."
         )
         arch_desc_top.setWordWrap(True)
-        arch_desc_top.setStyleSheet(f"color: {theme_manager.palette.text_secondary}; font-size: 11px; padding: 2px 0;")
+        arch_desc_top.setStyleSheet(
+            f"color: {theme_manager.palette.text_secondary}; font-size: 11px; padding: 2px 0;"
+        )
         arch_lay.addWidget(arch_desc_top)
 
         self.arch_combo = QComboBox()
@@ -145,7 +146,9 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
             "Refresh to detect installed models."
         )
         self.local_desc.setWordWrap(True)
-        self.local_desc.setStyleSheet(f"color: {theme_manager.palette.text_secondary}; font-size: 11px; padding: 2px 0;")
+        self.local_desc.setStyleSheet(
+            f"color: {theme_manager.palette.text_secondary}; font-size: 11px; padding: 2px 0;"
+        )
         local_lay.addWidget(self.local_desc)
 
         # Local backend selector (Ollama / llama.cpp / LM Studio)
@@ -228,7 +231,9 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
             "(OpenRouter, OpenAI, 9Router, Groq, …)."
         )
         self.heavy_api_desc.setWordWrap(True)
-        self.heavy_api_desc.setStyleSheet(f"color: {theme_manager.palette.text_secondary}; font-size: 11px; padding: 2px 0;")
+        self.heavy_api_desc.setStyleSheet(
+            f"color: {theme_manager.palette.text_secondary}; font-size: 11px; padding: 2px 0;"
+        )
         heavy_api_lay.addWidget(self.heavy_api_desc)
 
         from core.llm.cloud_client import CLOUD_PRESETS
@@ -783,8 +788,7 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
                     self._workers_lock_label = QLabel("🔒 1 (VRAM protection)")
                     # M1 de-hardcode: terracotta-red literal → error token.
                     self._workers_lock_label.setStyleSheet(
-                        f"color: {theme_manager.palette.error}; "
-                        f"font-size: 10px; font-weight: bold;"
+                        f"color: {theme_manager.palette.error}; font-size: 10px; font-weight: bold;"
                     )
                     self._workers_lock_label.setToolTip(
                         "Max workers locked for VRAM thermal protection."
