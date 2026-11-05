@@ -665,6 +665,11 @@ class Settings:
                 "harakat_model": "translategemma-12b-it.Q4_K_M_mradermacher:latest",
                 "judge_model": "",  # empty = use summarisation.model
                 "default_target_lang": "fa",  # "en" or "fa"
+                # V0.7.4 (wizard rework ⑥, D15): the wizard's translation
+                # selection mode — "selected" (mode A, the default: the
+                # Step-4 selection is projected onto translation.outputs
+                # at Start) or "manual" (the explicit checkbox list).
+                "selection_mode": "selected",
                 "temperature": 0.1,
                 "no_think": True,  # avoid <think> blocks
                 "max_chunk_tokens": 2000,  # Ollama chunk size (NLLB uses 400)
@@ -1132,6 +1137,9 @@ class Settings:
                 ("harakat_model", "translategemma:4b"),
                 ("judge_model", ""),
                 ("default_target_lang", "fa"),
+                # V0.7.4 (wizard rework ⑥, D15): the selection mode rides
+                # the same add-missing-keys default as the rest.
+                ("selection_mode", "selected"),
                 ("temperature", 0.1),
                 ("no_think", True),
                 ("max_chunk_tokens", 2000),

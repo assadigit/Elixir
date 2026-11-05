@@ -92,6 +92,31 @@ def _stub_settings_class():
     return _FakeSettings
 
 
+class _FakeSignal:
+    def connect(self, *args, **kwargs):
+        pass
+
+
+class _FakeWorker:
+    """Captures the worker fn instead of starting a thread — building Step 6
+    offscreen must never touch the network (the V0.7.4 listing worker; the
+    same stub test_v0730 uses for Step 5's)."""
+
+    captured: list = []
+
+    def __init__(self, fn, *args, **kwargs):
+        type(self).captured.append(fn)
+
+    finished = _FakeSignal()
+    failed = _FakeSignal()
+
+    def is_running(self):
+        return False
+
+    def start(self):
+        pass
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # B1 — source/AST pins (run on every rig, Qt-less CI included)
 # ═══════════════════════════════════════════════════════════════════════════
@@ -172,7 +197,11 @@ class TestB1GuardPins:
     def test_guard_only_fires_on_empty_new_value(self):
         """A non-empty selection still writes through (the normal path)."""
         src = _method_src(_WIZARD, "_save_translation_settings", "WizardView")
-        assert "new_value = str(getattr(self.state, state_field)" in src
+        # V0.7.4 (rework ⑥): the method gained a local ``s = self.state``
+        # alias — the guard still reads the STATE field for the new value.
+        assert "new_value = str(getattr(s, state_field)" in src or (
+            "new_value = str(getattr(self.state, state_field)" in src
+        )
         assert "if not new_value:" in src
 
 
@@ -333,6 +362,7 @@ class TestB1Step6OffscreenRender:
         return QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
     def test_combos_populated_and_saved_model_selected(self, app, tmp_path):
+        from ui_qt.views.wizard_steps import step6_translation as step6_mod
         from ui_qt.views.wizard_steps.shared import WizardState
         from ui_qt.views.wizard_steps.step6_translation import Step6Translation
 
@@ -345,15 +375,30 @@ class TestB1Step6OffscreenRender:
             models=["qwen2.5:7b", "translategemma:4b"],
         )
         state = WizardState()
-        step6 = Step6Translation(stub, state)
+        # V0.7.4 (rework ⑥): the listing moved OFF the UI thread (the
+        # W-b11 pattern — the old build-time sync HTTP call could freeze
+        # the wizard open for the 5s timeout).  Stub the worker (no HTTP,
+        # no stray thread), then drive the main-thread slot — the combos
+        # seed from settings at build and the listing confirms them.
+        orig = step6_mod.SimpleWorker
+        step6_mod.SimpleWorker = _FakeWorker
         try:
-            # Combos are POPULATED (pre-fix: both were always empty).
+            step6 = Step6Translation(stub, state)
+        finally:
+            step6_mod.SimpleWorker = orig
+        try:
+            # Seeded at build: the saved picks are already selected BEFORE
+            # any listing runs (the V0.7.3 D14 pattern).
+            assert step6.harakat_combo.currentData() == "qwen2.5:7b"
+            assert step6.judge_combo.currentData() == "translategemma:4b"
+            # The listing lands (the pre-fix B1 regression: both combos
+            # were ALWAYS empty because the controller method didn't exist).
+            step6._on_models_loaded(["qwen2.5:7b", "translategemma:4b"])
             assert step6.harakat_combo.count() == 2, "harakat combo must list the models"
             assert step6.judge_combo.count() == 3, (
                 "judge combo = 2 models + the '(use summarization model)' empty item"
             )
-            # The saved models are pre-selected (the B5 load feeds state; the
-            # combos reflect the saved settings).
+            # The saved models stay selected after the listing.
             assert step6.harakat_combo.currentData() == "qwen2.5:7b"
             assert step6.judge_combo.currentData() == "translategemma:4b"
             # Backend + language keep their saved values.
@@ -418,6 +463,11 @@ class TestB5RoundTripBehaviour:
                 "translation.default_target_lang": "en",
                 "translation.harakat_model": "qwen2.5:7b",
                 "translation.judge_model": "translategemma:4b",
+                # V0.7.4 (rework ⑥, D15): these pins protect the MANUAL
+                # outputs round-trip — in mode A (the new default) the
+                # outputs are intentionally derived from Step 4 at Start,
+                # which is pinned separately in test_v0740_step6_translation.
+                "translation.selection_mode": "manual",
                 "translation.outputs.chapter_summaries": False,
                 "translation.outputs.keypoints": True,
                 "translation.outputs.mindmap": True,
@@ -506,6 +556,7 @@ class TestB5FullWizardCharacterization:
         import tempfile
 
         monkeypatch.setenv("HOME", tempfile.mkdtemp(prefix="elixir-v0686-home-"))
+        from ui_qt.views.wizard_steps import step6_translation as step6_mod
         from ui_qt.views.wizard_view import WizardView
 
         stub = _StubController(
@@ -516,10 +567,21 @@ class TestB5FullWizardCharacterization:
                 "translation.harakat_model": "qwen2.5:7b",
                 "translation.judge_model": "translategemma:4b",
                 "translation.outputs.chapter_summaries": False,
+                # V0.7.4 (rework ⑥, D15): manual mode — this pin protects
+                # the B5 outputs round-trip; mode A derives at Start (pinned
+                # in test_v0740_step6_translation.py).
+                "translation.selection_mode": "manual",
             },
             models=["qwen2.5:7b", "translategemma:4b"],
         )
-        view = WizardView(stub)
+        # V0.7.4: Step 6's listing now starts a worker at build — stub it
+        # (no HTTP, no stray thread; the V0.7.3 Step-5 lesson).
+        orig = step6_mod.SimpleWorker
+        step6_mod.SimpleWorker = _FakeWorker
+        try:
+            view = WizardView(stub)
+        finally:
+            step6_mod.SimpleWorker = orig
         try:
             # Open: the state loaded the user's settings BEFORE the steps
             # were built, so Step 6 shows the truth.

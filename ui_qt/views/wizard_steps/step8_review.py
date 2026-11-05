@@ -24,7 +24,11 @@ from PySide6.QtWidgets import (
 # V0.7.2 (wizard rework ④, B8): the outputs line enumerates through the
 # registry — it can never drift from the output list again (the audit
 # found 9-10 newer outputs silently omitted here, §3 B8).
-from core.outputs.registry import selected_output_names
+from core.outputs.registry import (
+    selected_output_names,
+    selected_translation_outputs,
+    translation_output_label,
+)
 from ui_qt.components.icons import icon
 from ui_qt.theme import theme_manager
 from ui_qt.views.wizard_steps.shared import WizardStep
@@ -187,8 +191,20 @@ class Step8Review(WizardStep):
             lines.append(f"  Target: {s.translation_target_lang}")
             lines.append(f"  Harakat model: {s.translation_harakat_model or '(default)'}")
             lines.append(f"  Judge model: {s.translation_judge_model or '(use summarization)'}")
-            tr_outs = [k for k, v in s.translation_outputs.items() if v]
-            lines.append(f"  Translate outputs: {', '.join(tr_outs) if tr_outs else '(none)'}")
+            if getattr(s, "translation_selection_mode", "selected") == "manual":
+                tr_outs = [k for k, v in s.translation_outputs.items() if v]
+                lines.append(f"  Translate outputs: {', '.join(tr_outs) if tr_outs else '(none)'}")
+            else:
+                # V0.7.4 (rework ⑥, D15): mode A — the list follows the
+                # Step-4 selection at Start; show the DERIVED truth (the
+                # same registry mapping the Start save uses), not the
+                # stale checkbox state.
+                derived = selected_translation_outputs(s)
+                names = [translation_output_label(k) for k, v in derived.items() if v]
+                lines.append(
+                    "  Translate outputs: follows Step 4 — "
+                    + (", ".join(names) if names else "(none)")
+                )
         else:
             lines.append("  Status: disabled")
         lines.append("")

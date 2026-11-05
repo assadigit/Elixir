@@ -102,6 +102,12 @@ class WizardState:
     translation_target_lang: str = "fa"
     translation_harakat_model: str = ""
     translation_judge_model: str = ""
+    # V0.7.4 (wizard rework ⑥, D15): the translation selection mode —
+    # "selected" (mode A, the DEFAULT: at Start, translation.outputs is
+    # derived from the Step-4 selection through the registry mapping) or
+    # "manual" (mode B: the explicit checkbox list).  Settings twin:
+    # translation.selection_mode.
+    translation_selection_mode: str = "selected"
     translation_outputs: dict[str, bool] = field(
         default_factory=lambda: {
             "chapter_summaries": True,

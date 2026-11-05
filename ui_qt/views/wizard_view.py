@@ -63,7 +63,7 @@ from core.models import ConversionResult
 # through the registry, exactly like Step 8's review line — one source,
 # zero drift (the audit found 9-10 newer outputs silently omitted from
 # this log too, §3 B8).
-from core.outputs.registry import selected_output_names
+from core.outputs.registry import selected_output_names, selected_translation_outputs
 
 # V0.7.0 (wizard rework ②, item 2a): the stage-chip header — the 10
 # steps group into 5 named stages (SOURCE · OUTPUTS · MODELS · TUNING ·
@@ -365,6 +365,13 @@ class WizardView(QDialog):
             )
             self.state.translation_judge_model = str(
                 s.get_setting("translation.judge_model", "") or ""
+            )
+            # V0.7.4 (wizard rework ⑥, D15): the selection mode rides the
+            # same round-trip — "selected" (mode A, the default) follows
+            # the Step-4 selection at Start; "manual" keeps the checkbox
+            # list the user last ticked.
+            self.state.translation_selection_mode = str(
+                s.get_setting("translation.selection_mode", "selected") or "selected"
             )
             for _key, _label, _sub in _TRANSLATABLE_OUTPUTS:
                 self.state.translation_outputs[_key] = bool(
@@ -894,6 +901,18 @@ class WizardView(QDialog):
             log.append(
                 f"    Judge model: {s.translation_judge_model or '(use summarization)'}", "INFO"
             )
+            # V0.7.4 (rework ⑥, D15): the mode line — in mode A the outputs
+            # list below is the DERIVED one (the derivation already ran in
+            # _save_translation_settings, before this log).
+            log.append(
+                "    Selection mode: "
+                + (
+                    "manual"
+                    if s.translation_selection_mode == "manual"
+                    else "follows the Step-4 selection"
+                ),
+                "INFO",
+            )
             tr_outs = [k for k, v in s.translation_outputs.items() if v]
             log.append(
                 f"    Translate outputs: {', '.join(tr_outs) if tr_outs else '(none)'}", "INFO"
@@ -933,16 +952,29 @@ class WizardView(QDialog):
         translation page (its combos save unconditionally); the judge
         combo's "(use summarisation model)" reset is therefore a
         Settings-page action, not a wizard one.
+
+        V0.7.4 (wizard rework ⑥, D15) — the two selection modes: in mode
+        A ("selected", the default) the ``translation.outputs`` dict is
+        DERIVED from the Step-4 selection right here — at Start, after
+        every step's ``save_to_state`` has run, so a Step-4 change made
+        after visiting Step 6 still counts.  The backend needs no change
+        (translation is a settings-driven post-conversion phase); the
+        derivation is the registry mapping
+        (``core.outputs.registry.selected_translation_outputs``), and
+        the state dict is replaced too so the start-log and the
+        completion UI report the derived truth.
         """
         c = self.controller
-        c.update_setting("translation.enabled", self.state.translation_enabled)
-        c.update_setting("translation.backend", self.state.translation_backend)
-        c.update_setting("translation.default_target_lang", self.state.translation_target_lang)
+        s = self.state
+        c.update_setting("translation.enabled", s.translation_enabled)
+        c.update_setting("translation.backend", s.translation_backend)
+        c.update_setting("translation.default_target_lang", s.translation_target_lang)
+        c.update_setting("translation.selection_mode", s.translation_selection_mode)
         for state_field, setting_path in (
             ("translation_harakat_model", "translation.harakat_model"),
             ("translation_judge_model", "translation.judge_model"),
         ):
-            new_value = str(getattr(self.state, state_field) or "")
+            new_value = str(getattr(s, state_field) or "")
             if not new_value:
                 saved_value = str(c.get_setting(setting_path, "") or "")
                 if saved_value:
@@ -953,7 +985,11 @@ class WizardView(QDialog):
                     )
                     continue
             c.update_setting(setting_path, new_value)
-        for key, val in self.state.translation_outputs.items():
+        if s.translation_enabled and s.translation_selection_mode != "manual":
+            # Mode A: the whole selection is derived (a complete dict —
+            # no stale carryover from a previous manual choice).
+            s.translation_outputs = selected_translation_outputs(s)
+        for key, val in s.translation_outputs.items():
             c.update_setting(f"translation.outputs.{key}", val)
 
     # ── Controller callbacks ──────────────────────────────────────────

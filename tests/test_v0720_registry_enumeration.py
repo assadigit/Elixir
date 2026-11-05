@@ -322,7 +322,11 @@ class TestB9HonestTTSCopy:
 class TestB8SourcePins:
     def test_step8_review_enumerates_from_registry(self):
         src = _src(_STEP8)
-        assert "from core.outputs.registry import selected_output_names" in src
+        # V0.7.4 (rework ⑥): the import went multi-line (it gained the
+        # translation mapping helpers) — the pin still asserts the
+        # registry is the source of the enumeration.
+        assert "from core.outputs.registry import (" in src
+        assert "selected_output_names," in src
         assert "outs = selected_output_names(s)" in src
         # The old hand-enumerated lines are gone (the drift source).
         for gone in (
