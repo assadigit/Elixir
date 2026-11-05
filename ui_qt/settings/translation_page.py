@@ -5,7 +5,8 @@ Tab structure:
      judge model selector, temperature, /no_think toggle, max chunk tokens.
   2. **Languages** — default target language (EN↔FA), auto-detect toggle.
   3. **Validation** — back-translation threshold, judge threshold, max retries.
-  4. **Harakat** — harakat (اعراب‌گذاری) toggle for Farsi TTS output.
+  4. **Harakat** — harakat (اعراب‌گذاری) toggle (the .harakat.md output
+     is a manual-review file for now — D16 defers the TTS wiring).
   5. **Outputs** — per-output translation selection (which of the 11 output
      types to translate when translation is enabled).
   6. **Preview** — live translation test box.
@@ -343,10 +344,10 @@ class TranslationValidationSection(QGroupBox):
 
 
 class TranslationHarakatSection(QGroupBox):
-    """Harakat (Persian diacritics) settings for TTS-friendly output."""
+    """Harakat (Persian diacritics) settings."""
 
     def __init__(self, controller: Controller, parent: QWidget | None = None) -> None:
-        super().__init__("Harakat (اعراب‌گذاری) for Farsi TTS", parent)
+        super().__init__("Harakat (اعراب‌گذاری)", parent)
         self.controller = controller
         f = make_form()
 
@@ -356,18 +357,20 @@ class TranslationHarakatSection(QGroupBox):
         )
         f.addRow(self.harakat_cb)
 
-        self.confident_cb = QCheckBox(
-            "Confidence-first: only add harakat where confident (recommended)"
-        )
-        self.confident_cb.setChecked(
-            bool(controller.get_setting("translation.harakat_confident_only", True))
-        )
-        f.addRow(self.confident_cb)
-
+        # V0.7.4 (wizard rework ⑥, 6b/D16): the honest copy.  The old text
+        # claimed "The harakat file is automatically used when generating
+        # Farsi podcast audio" — aspirational: NO downstream consumer
+        # reads the .harakat.md file (audit §W10; the TTS / Podcast-Maker
+        # wiring is deferred to the backlog).  The old
+        # "Confidence-first" checkbox is gone too — the dead
+        # translation.harakat_confident_only key was never read by any
+        # backend (the confidence-first behaviour lives in the prompt
+        # itself, harakat.py:13-14, not in a setting).
         info = QLabel(
             "Harakat adds vowel diacritics (فتحه، ضمه، کسره، سکون، تشدید) to "
-            "Persian text for accurate TTS pronunciation. The harakat file is "
-            "automatically used when generating Farsi podcast audio."
+            "Persian text. The .harakat.md file is a MANUAL-REVIEW copy for "
+            "now — it is not yet wired into the Podcast Maker / TTS (that "
+            "wiring is on the backlog)."
         )
         info.setWordWrap(True)
         info.setStyleSheet("font-size: 10px; color: palette(text-muted); background: transparent;")
@@ -378,14 +381,10 @@ class TranslationHarakatSection(QGroupBox):
     def save(self) -> None:
         c = self.controller
         c.update_setting("translation.harakat_enabled", self.harakat_cb.isChecked())
-        c.update_setting("translation.harakat_confident_only", self.confident_cb.isChecked())
 
     def reload(self) -> None:
         c = self.controller
         self.harakat_cb.setChecked(bool(c.get_setting("translation.harakat_enabled", True)))
-        self.confident_cb.setChecked(
-            bool(c.get_setting("translation.harakat_confident_only", True))
-        )
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -441,7 +440,7 @@ _TRANSLATABLE_OUTPUTS = [
     ("keypoints", "Keypoints", "BookName.keypoints.md"),
     ("simplified_keypoints", "Simplified keypoints", "BookName.simplified_keypoints.md"),
     ("briefing", "Executive briefing", "BookName.briefing.md"),
-    ("podcast", "Podcast script", "BookName.podcast.md (+ harakat for TTS)"),
+    ("podcast", "Podcast script", "BookName.podcast.md (+ a .harakat.md review copy)"),
     ("flashcards", "Flashcards", "BookName.flashcards.md"),
     ("obsidian", "Obsidian KB", "obsidian/*.md"),
     ("study_guide", "Study guide", "BookName.study_guide.md"),

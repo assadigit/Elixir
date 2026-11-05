@@ -820,3 +820,166 @@ class TestStep6Grabs:
         finally:
             step.hide()
             step.deleteLater()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 6b — honesty: the .harakat.md output is a manual-review file (D16)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestHarakatManualReviewTruth:
+    """The audit's finding (§W10): the .harakat.md output has NO downstream
+    consumer — podcast/TTS never reads it; the 'feeds the Podcast Maker'
+    claim was aspirational.  D16 defers the wiring to the backlog; every
+    user-facing surface now says manual-review."""
+
+    def test_harakat_module_docstring_honest(self):
+        src = _src(_HARAKAT)
+        assert "MANUAL-REVIEW" in src
+        assert "feeds directly into" not in src
+        assert "Podcast Maker for Farsi audio generation" not in src
+
+    def test_service_file_map_comments_honest(self):
+        src = _src(_SERVICE)
+        assert "TTS-ready" not in src
+        assert "ready for Podcast Maker" not in src
+        assert "manual-review copy" in src
+
+    def test_settings_page_harakat_copy_honest(self):
+        src = _src(_TR_PAGE)
+        assert "automatically used when generating Farsi podcast audio" not in src
+        assert "MANUAL-REVIEW copy" in src
+
+    def test_translatable_podcast_subtitle_honest(self):
+        src = _src(_TR_PAGE)
+        assert "+ harakat for TTS" not in src
+        assert "+ a .harakat.md review copy" in src
+
+    def test_step6_harakat_tooltip_honest(self):
+        src = _src(_STEP6)
+        assert "MANUAL-REVIEW" in src
+        assert "not yet wired into the Podcast Maker / TTS" in src
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 6b — the dead settings keys purged (the audit's dead-code register)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestDeadKeysPurged:
+    """translation.outputs.packets (no _OUTPUT_FILE_MAP entry — the key
+    never selected anything) and translation.harakat_confident_only
+    (never read by any backend) are gone from every runtime surface.
+
+    The pins assert CODE, not comments (the purge code and its
+    documentation legitimately name the keys); the resurrection vectors
+    are the DEFAULTS dict, the migration add-missing-keys lists, and any
+    get()/[…] reader — each is pinned separately."""
+
+    _RUNTIME_READERS = ("ui_qt", "core")
+
+    @staticmethod
+    def _strip_comments(text: str) -> str:
+        """Drop full-line comments and docstrings' '# …' fragments (the
+        test_v182043 _strip_comments pattern)."""
+        out = []
+        for line in text.splitlines():
+            if line.strip().startswith("#"):
+                continue
+            out.append(line.split(" # ")[0].rstrip() if " # " in line else line)
+        return "\n".join(out)
+
+    def test_translation_defaults_carry_no_dead_keys(self):
+        """The strongest pin: the REAL defaults dict has neither dead key
+        (a fresh install never sees them)."""
+        from utils.settings import Settings
+
+        defaults = Settings.__new__(Settings)._defaults()
+        tr = defaults["translation"]
+        assert "harakat_confident_only" not in tr
+        assert "packets" not in tr["outputs"]
+        # The living keys stay exactly as they were.
+        assert tr["outputs"]["chapter_summaries"] is True
+        assert tr["outputs"]["podcast"] is True
+        assert tr["outputs"]["mindmap"] is False
+        assert tr["harakat_enabled"] is True
+        # The Output Studio's own packets toggle is a DIFFERENT, living key.
+        assert defaults["outputs"]["packets"] is False
+
+    def test_harakat_confident_only_has_zero_readers(self):
+        """No runtime reader outside the purge itself (comment-stripped —
+        the migration's del/if lines in utils/settings.py are the purge,
+        not a reader)."""
+        for root in self._RUNTIME_READERS:
+            for f in (_project_root / root).rglob("*.py"):
+                assert "harakat_confident_only" not in self._strip_comments(_src(f)), (
+                    f"{f} still reads the dead key"
+                )
+        for single in ("controller.py", "main.py"):
+            assert "harakat_confident_only" not in self._strip_comments(
+                _src(_project_root / single)
+            )
+
+    def test_confident_checkbox_deleted_from_the_settings_page(self):
+        src = _src(_TR_PAGE)
+        assert "self.confident_cb" not in src
+        # Comment-stripped: the checkbox's user-facing label is gone from
+        # CODE (the purge's documentation comment may name it).
+        assert "Confidence-first" not in self._strip_comments(src)
+
+    def test_no_resurrection_vectors_in_the_migration(self):
+        """The add-missing-keys lists (the tuple form) can no longer
+        re-add either dead key to an existing settings.json; the purge
+        pops are in place (the nllb_model pattern)."""
+        stripped = self._strip_comments(_src(_SETTINGS))
+        assert '("harakat_confident_only"' not in stripped
+        assert '("packets"' not in stripped, "no migration list re-adds the packets key"
+        # The purge itself.
+        assert 'if "harakat_confident_only" in tr:' in stripped
+        assert 'del tr["harakat_confident_only"]' in stripped
+        assert 'if "packets" in tr_out:' in stripped
+        assert 'del tr_out["packets"]' in stripped
+
+    def test_migration_purges_a_legacy_settings_file(self, tmp_path):
+        """The real Settings._load: a legacy settings.json carrying both
+        dead keys comes back without them (the nllb_model pattern)."""
+        import json
+
+        legacy = {
+            "translation": {
+                "backend": "ollama",
+                "harakat_confident_only": True,
+                "outputs": {
+                    "chapter_summaries": True,
+                    "keypoints": True,
+                    "packets": True,  # the dead key, ON, in a legacy file
+                    "mindmap": False,
+                },
+            }
+        }
+        (tmp_path / "settings.json").write_text(json.dumps(legacy), encoding="utf-8")
+
+        from unittest.mock import patch
+
+        from utils.settings import Settings
+
+        Settings._instance = None
+        Settings._test_override = None
+        try:
+            with (
+                patch.object(Settings, "_settings_dir", tmp_path),
+                patch.object(Settings, "_settings_file", tmp_path / "settings.json"),
+            ):
+                s = Settings()
+                tr = s.get("translation", {})
+                assert "harakat_confident_only" not in tr, "the dead key must be purged on load"
+                tr_out = tr.get("outputs", {})
+                assert "packets" not in tr_out, "the dead outputs key must be purged on load"
+                # The LIVING keys survive the purge untouched.
+                assert tr_out["chapter_summaries"] is True
+                assert tr_out["keypoints"] is True
+                assert tr_out["mindmap"] is False
+                assert tr["backend"] == "ollama"
+        finally:
+            Settings._instance = None
+            Settings._test_override = None

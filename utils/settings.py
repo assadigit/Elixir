@@ -678,9 +678,11 @@ class Settings:
                 "back_translation_threshold": 0.6,  # semantic similarity
                 "judge_threshold": 0.7,  # judge LLM faithfulness
                 "max_retries": 1,  # retry failed chunks
-                # Harakat (اعراب‌گذاری) for Farsi TTS output
+                # Harakat (اعراب‌گذاری) for the Farsi translation outputs
+                # V0.7.4 (wizard rework ⑥, dead-code register): the
+                # harakat_confident_only key is PURGED — never read by any
+                # backend (confidence-first lives in the prompt itself).
                 "harakat_enabled": True,
-                "harakat_confident_only": True,
                 # Glossary (terminology consistency)
                 "glossary_enabled": True,
                 # API (reuse Ollama endpoint)
@@ -693,9 +695,12 @@ class Settings:
                     "keypoints": True,  # Book.keypoints.md
                     "simplified_keypoints": False,
                     "briefing": False,
-                    "podcast": True,  # podcast script → harakat for TTS
+                    "podcast": True,  # podcast script → harakat review copy
                     "flashcards": False,
-                    "packets": False,  # V7.3.0: Packets of Knowledge
+                    # V0.7.4 (rework ⑥, dead-code register): the "packets"
+                    # entry is PURGED — core.translation.service.
+                    # _OUTPUT_FILE_MAP has no "packets" glob, so the key
+                    # never selected anything.
                     "obsidian": False,
                     "study_guide": False,
                     "social": False,
@@ -1148,7 +1153,6 @@ class Settings:
                 ("judge_threshold", 0.7),
                 ("max_retries", 1),
                 ("harakat_enabled", True),
-                ("harakat_confident_only", True),
                 ("glossary_enabled", True),
                 ("endpoint", "http://localhost:11434/v1"),
                 ("api_key", ""),
@@ -1176,6 +1180,16 @@ class Settings:
                     "[Settings] Removed deprecated translation.nllb_model "
                     "setting (NLLB backend retired)."
                 )
+            # V0.7.4 (wizard rework ⑥, dead-code register): the second dead
+            # translation key — harakat_confident_only was never read by
+            # any backend (confidence-first lives in the harakat prompt
+            # itself). Same deletion pattern as nllb_model above.
+            if "harakat_confident_only" in tr:
+                del tr["harakat_confident_only"]
+                logger.info(
+                    "[Settings] Removed dead translation.harakat_confident_only "
+                    "setting (never read — the behaviour is prompt-side)."
+                )
             # Ensure the per-output sub-dict exists
             tr_out = tr.setdefault("outputs", {})
             for key, default_val in [
@@ -1186,7 +1200,6 @@ class Settings:
                 ("briefing", False),
                 ("podcast", True),
                 ("flashcards", False),
-                ("packets", False),  # V7.3.0
                 ("obsidian", False),
                 ("study_guide", False),
                 ("social", False),
@@ -1194,6 +1207,15 @@ class Settings:
             ]:
                 if key not in tr_out:
                     tr_out[key] = default_val
+            # V0.7.4 (wizard rework ⑥, dead-code register): purge the dead
+            # translation.outputs.packets key — no _OUTPUT_FILE_MAP entry,
+            # so it never selected anything (the nllb_model pattern).
+            if "packets" in tr_out:
+                del tr_out["packets"]
+                logger.info(
+                    "[Settings] Removed dead translation.outputs.packets "
+                    "setting (no backend glob — never selected anything)."
+                )
 
             # ── V4.7.25: Ensure TTS Australian accent settings exist ────────
             tts = merged.setdefault("tts", {})

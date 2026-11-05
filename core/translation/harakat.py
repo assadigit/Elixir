@@ -13,8 +13,10 @@ guess, and it guesses wrong often. This module adds:
 **Confidence-first**: the LLM is instructed to add harakat ONLY where
 confident. Wrong harakat is worse than no harakat.
 
-This module produces the ``.harakat.md`` variant that feeds directly into
-the Podcast Maker for Farsi audio generation.
+This module produces the ``.harakat.md`` variant — a MANUAL-REVIEW
+file for now: nothing downstream reads it yet (the Podcast Maker /
+TTS wiring is deferred to the backlog, V0.7.4 / D16).  Review the
+file by hand before using it for pronunciation work.
 """
 
 from __future__ import annotations

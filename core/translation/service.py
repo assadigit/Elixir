@@ -24,14 +24,18 @@ File layout produced::
     ├── MyBook.summary.md                      ← original
     ├── fa/                                    ← translation subfolder
     │   ├── MyBook.summary.fa.md               ← clean Persian
-    │   ├── MyBook.summary.fa.harakat.md       ← Persian + harakat (TTS-ready)
+    │   ├── MyBook.summary.fa.harakat.md       ← manual-review copy (no TTS wiring yet)
     │   ├── chapters/
     │   │   └── summaries/
     │   │       └── 001_summary.fa.md
-    │   └── MyBook.podcast.fa.harakat.md       ← ready for Podcast Maker
+    │   └── MyBook.podcast.fa.harakat.md       ← manual-review copy (no TTS wiring yet)
     └── translation_logs/
         ├── MyBook.translation.report.json
         └── MyBook.glossary.json
+
+V0.7.4 (rework ⑥, D16): the ``.harakat.md`` files are manual-review
+copies — no downstream consumer reads them yet (the Podcast Maker /
+TTS wiring is on the backlog).
 """
 
 from __future__ import annotations
