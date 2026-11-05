@@ -176,7 +176,9 @@ class TestPageGroupBlocks:
         # 40 filler words/page ≈ 60-90 tokens/page → AUTO clamps to 25.
         text, markers = _synthetic_doc(pages=30, words_per_page=40)
         logs: list = []
-        seg = PageGroupSegmenter(self._request(page_group_size=0), lambda m, l="INFO": logs.append(m))
+        seg = PageGroupSegmenter(
+            self._request(page_group_size=0), lambda m, l="INFO": logs.append(m)
+        )
         blocks = seg.segment(text, 30, markers)
         # 30 pages / 25-per-block → 2 blocks (25 + 5).
         assert len(blocks) == 2
