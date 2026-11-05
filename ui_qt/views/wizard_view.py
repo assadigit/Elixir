@@ -58,6 +58,11 @@ from controller import Controller
 # for older logs.
 from core.common.progress_events import parse_progress_line
 from core.models import ConversionResult
+
+# V0.7.0 (wizard rework ②, item 2a): the stage-chip header — the 10
+# steps group into 5 named stages (SOURCE · OUTPUTS · MODELS · TUNING ·
+# REVIEW). Presentation only: every step keeps its identity (D1).
+from ui_qt.components.stage_bar import StageBar, StageSpec
 from ui_qt.controller_bridge import QtControllerBridge
 from ui_qt.settings.translation_page import _TRANSLATABLE_OUTPUTS
 from ui_qt.theme import theme_manager
@@ -113,17 +118,15 @@ _CHAPTER_RE = re.compile(r"Chapter (\d+)/(\d+)")
 # Wizard View (main container)
 # ════════════════════════════════════════════════════════════════════════════
 
-_STEP_LABELS = [
-    "PDF",
-    "Range",
-    "OCR",
-    "Outputs",
-    "Models",
-    "Translation",
-    "Advanced",
-    "Fine-tune",
-    "Review",
-    "Logs",
+# V0.7.0 (item 2a): the 5 stage groups over the 10 wizard steps. The
+# step order below IS the wizard's step order — StageBar maps the global
+# step index onto each stage's segments.
+_WIZARD_STAGES = [
+    StageSpec(name="Source", steps=("pdf", "range", "ocr")),
+    StageSpec(name="Outputs", steps=("outputs",)),
+    StageSpec(name="Models", steps=("models", "translation")),
+    StageSpec(name="Tuning", steps=("adv", "fine")),
+    StageSpec(name="Review", steps=("review", "logs")),
 ]
 
 
@@ -171,41 +174,12 @@ class WizardView(QDialog):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        # ── Progress indicator ─────────────────────────────────────────
-        self.progress_widget = QWidget()
-        self.progress_widget.setFixedHeight(42)  # V7.4.0: was 48
-        pw_lay = QHBoxLayout(self.progress_widget)
-        pw_lay.setContentsMargins(20, 8, 20, 8)
-        pw_lay.setSpacing(0)
-
-        self._step_dots: list[QLabel] = []
-        self._step_labels: list[QLabel] = []
-        for i, label in enumerate(_STEP_LABELS):
-            dot_col = QVBoxLayout()
-            dot_col.setSpacing(2)
-            dot_col.setAlignment(Qt.AlignCenter)
-            dot = QLabel("●")
-            dot.setAlignment(Qt.AlignCenter)
-            dot.setStyleSheet("font-size: 14px; background: transparent;")
-            self._step_dots.append(dot)
-            dot_col.addWidget(dot)
-            lbl = QLabel(label)
-            lbl.setAlignment(Qt.AlignCenter)
-            lbl.setStyleSheet(
-                "font-size: 10px; color: palette(text-muted); background: transparent;"
-            )
-            self._step_labels.append(lbl)
-            dot_col.addWidget(lbl)
-            pw_lay.addLayout(dot_col)
-            if i < len(_STEP_LABELS) - 1:
-                line = QLabel("━")
-                line.setAlignment(Qt.AlignCenter)
-                line.setStyleSheet(
-                    "font-size: 10px; color: palette(border); background: transparent;"
-                )
-                pw_lay.addWidget(line)
-
-        root.addWidget(self.progress_widget)
+        # ── Stage-chip header (V0.7.0, item 2a — the V1 redesign) ────────
+        # Replaces the 42px dot strip (the ``●`` + 10px-label rows): 5
+        # named stages, per-stage segmented tracks with done/current/
+        # future states, hover tooltips, compact form below 780px.
+        self.stage_bar = StageBar(_WIZARD_STAGES)
+        root.addWidget(self.stage_bar)
 
         # ── Step stack ─────────────────────────────────────────────────
         self.stack = QStackedWidget()
@@ -373,46 +347,10 @@ class WizardView(QDialog):
 
     def _update_step(self) -> None:
         self.stack.setCurrentIndex(self._current_step)
-        # Update dots — V7.6.0 R3: current step is visually distinct via
-        # larger dot + accent-colored background pill + bold label.
-        p = theme_manager.palette
-        for i, (dot, lbl) in enumerate(zip(self._step_dots, self._step_labels, strict=False)):
-            if i < self._current_step:
-                # Completed step — muted green, normal size
-                color = p.success
-                dot.setStyleSheet(
-                    f"font-size: 14px; color: {color}; background: transparent;"
-                    f" font-weight: normal; border: none;"
-                )
-                lbl.setStyleSheet(
-                    f"font-size: 10px; color: {p.text_muted}; background: transparent;"
-                    f" font-weight: normal;"
-                )
-            elif i == self._current_step:
-                # Current step — bigger dot, accent color, soft background pill
-                dot.setStyleSheet(
-                    f"font-size: 20px; color: {p.accent};"
-                    f" background: {p.accent_soft};"
-                    f" font-weight: bold;"
-                    f" border: 2px solid {p.accent};"
-                    f" border-radius: 12px;"
-                    f" padding: 2px 6px;"
-                )
-                lbl.setStyleSheet(
-                    f"font-size: 11px; color: {p.accent}; background: transparent;"
-                    f" font-weight: bold;"
-                )
-            else:
-                # Future step — muted, normal
-                color = p.text_muted
-                dot.setStyleSheet(
-                    f"font-size: 14px; color: {color}; background: transparent;"
-                    f" font-weight: normal; border: none;"
-                )
-                lbl.setStyleSheet(
-                    f"font-size: 10px; color: {color}; background: transparent;"
-                    f" font-weight: normal;"
-                )
+        # V0.7.0 (item 2a): the StageBar replaces the old dot-pill restyle
+        # loop — one call, the bar maps the global step index onto the 5
+        # stages' segments (done + check / current + ring / future).
+        self.stage_bar.set_current_step(self._current_step)
         # Update buttons
         self.back_btn.setEnabled(self._current_step > 0 and self._current_step < 9)
         if self._current_step == 9:
@@ -1150,7 +1088,7 @@ class WizardView(QDialog):
         )
 
         from PySide6.QtCore import QTimer
-        from PySide6.QtWidgets import QDialog, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
+        from PySide6.QtWidgets import QDialog, QHBoxLayout, QPushButton, QVBoxLayout
 
         countdown_dlg = QDialog(self)
         countdown_dlg.setWindowTitle(f"{label} countdown")
@@ -1457,4 +1395,5 @@ class WizardView(QDialog):
 
     def refresh_theme(self) -> None:
         """Refresh theme-dependent styling."""
+        self.stage_bar.refresh_theme()
         self._update_step()
