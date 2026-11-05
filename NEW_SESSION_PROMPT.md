@@ -198,8 +198,10 @@ pins (`tests/test_v0686_wizard_hotfix.py`) must stay green.
 ## THE LOOP (session mechanics)
 
 Recover: `cd /home/z/elixir-repo` (clone with the session token if
-absent). `git log --oneline -5` — expect `b641d5b` (the V0.7.0
-release) on top; tag `V0.7.0` pushed. Baseline per the venv + Qt notes
+absent). `git log --oneline -5` — expect the Phase-4 handoff docs commit
+(this file, `a79691e` or a later docs touch-up) on top and `b641d5b`
+(the V0.7.0 release) directly below it; tag `V0.7.0` pushed. Baseline
+per the venv + Qt notes
 above. Orient: read AGENTS.md, this prompt, the Round-2 plan (all of
 §0-§2, especially Phase ③), the audit's §W4/§W5 sections + the
 dead-code register. Skim `step2_range.py`, `step3_ocr.py`, the
