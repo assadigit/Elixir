@@ -329,47 +329,6 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
         params_lay.setContentsMargins(10, 10, 10, 8)
         params_lay.setSpacing(6)
 
-        # Workers + heavy temperature
-        row = QHBoxLayout()
-        row.setSpacing(10)
-        self.workers_spin = QSpinBox()
-        self.workers_spin.setRange(1, 4)
-        self.workers_spin.setValue(self.state.max_workers)
-        self.workers_spin.valueChanged.connect(self._check_workers_warning)
-        self._workers_lock_label = None
-        self._check_thermal_lock()
-        row.addWidget(QLabel("Max workers:"))
-        row.addWidget(self.workers_spin)
-        self.workers_warn_label = QLabel("")
-        self.workers_warn_label.setObjectName("Caption")
-        self.workers_warn_label.setWordWrap(True)
-        row.addWidget(self.workers_warn_label)
-
-        from PySide6.QtWidgets import QDoubleSpinBox
-
-        self.temp_spin = QDoubleSpinBox()
-        self.temp_spin.setRange(0.0, 1.0)
-        self.temp_spin.setSingleStep(0.05)
-        self.temp_spin.setDecimals(2)
-        self.temp_spin.setValue(self.state.temperature)
-        self.temp_spin.setToolTip(
-            "Sampling temperature for the ONE model.\n\n"
-            "• Qwythos-9B: minimum 0.6 (fine-tuner spec)\n"
-            "• gemma2:7b/9b: 0.4-0.9\n"
-            "• qwen2.5:7b: 0.3-0.9\n"
-            "• Cloud APIs: 0.2-0.7 typical\n"
-            "• 0.0 — DO NOT USE — produces empty/degenerate output on most local models\n"
-        )
-        row.addWidget(QLabel("Temperature:"))
-        row.addWidget(self.temp_spin)
-        self.temp_warn_label = QLabel("")
-        self.temp_warn_label.setObjectName("Caption")
-        row.addWidget(self.temp_warn_label)
-        self.temp_spin.valueChanged.connect(self._check_temp_warning)
-        self._check_temp_warning(self.temp_spin.value())
-        row.addStretch()
-        params_lay.addLayout(row)
-
         # ── V0.7.3 (wizard rework ⑤, D12): the limits — single owner ──
         # Step 5 is the ONLY place these two fields are set (Step 7b's
         # duplicate "Summarization limits" group is deleted this phase —
@@ -466,6 +425,50 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
             "can raise the context further at start time (the model registry)."
         )
         params_lay.addWidget(self.effective_limits_label)
+
+        # Workers + heavy temperature (V0.7.3: moved BELOW the limits — the
+        # phase-gate grabs showed the computed line falling one row under
+        # the fold at 820×600; the limits + truth line are the box's
+        # headline, the tuning knobs follow).
+        row = QHBoxLayout()
+        row.setSpacing(10)
+        self.workers_spin = QSpinBox()
+        self.workers_spin.setRange(1, 4)
+        self.workers_spin.setValue(self.state.max_workers)
+        self.workers_spin.valueChanged.connect(self._check_workers_warning)
+        self._workers_lock_label = None
+        self._check_thermal_lock()
+        row.addWidget(QLabel("Max workers:"))
+        row.addWidget(self.workers_spin)
+        self.workers_warn_label = QLabel("")
+        self.workers_warn_label.setObjectName("Caption")
+        self.workers_warn_label.setWordWrap(True)
+        row.addWidget(self.workers_warn_label)
+
+        from PySide6.QtWidgets import QDoubleSpinBox
+
+        self.temp_spin = QDoubleSpinBox()
+        self.temp_spin.setRange(0.0, 1.0)
+        self.temp_spin.setSingleStep(0.05)
+        self.temp_spin.setDecimals(2)
+        self.temp_spin.setValue(self.state.temperature)
+        self.temp_spin.setToolTip(
+            "Sampling temperature for the ONE model.\n\n"
+            "• Qwythos-9B: minimum 0.6 (fine-tuner spec)\n"
+            "• gemma2:7b/9b: 0.4-0.9\n"
+            "• qwen2.5:7b: 0.3-0.9\n"
+            "• Cloud APIs: 0.2-0.7 typical\n"
+            "• 0.0 — DO NOT USE — produces empty/degenerate output on most local models\n"
+        )
+        row.addWidget(QLabel("Temperature:"))
+        row.addWidget(self.temp_spin)
+        self.temp_warn_label = QLabel("")
+        self.temp_warn_label.setObjectName("Caption")
+        row.addWidget(self.temp_warn_label)
+        self.temp_spin.valueChanged.connect(self._check_temp_warning)
+        self._check_temp_warning(self.temp_spin.value())
+        row.addStretch()
+        params_lay.addLayout(row)
 
         host_lay.addWidget(params_box)
         host_lay.addStretch()

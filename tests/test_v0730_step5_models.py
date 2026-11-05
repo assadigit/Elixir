@@ -1046,3 +1046,49 @@ class TestTokenKeywordFalsePositive:
         assert isinstance(req.summarisation_max_context_tokens, int)
         assert req.summarisation_max_output_tokens == 16000
         assert isinstance(req.summarisation_max_output_tokens, int)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# The phase-gate grabs (the V0.7.2 pattern): 740×540 + 820×600, both themes
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestStep5Grabs:
+    @pytest.fixture(scope="class")
+    def app(self):
+        QtWidgets = _qt_or_skip()
+        return QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+
+    def test_limits_render_above_the_tuning_row(self):
+        """The VLM pass's catch: at 820×600 the computed line fell one row
+        under the fold — the limits block (Auto → context → output → the
+        truth line) now precedes the workers/temperature row in the
+        Parameters box (source order = visual order)."""
+        src = _src(_STEP5)
+        i_auto = src.index('QCheckBox("Auto — let the model class decide')
+        i_line = src.index("params_lay.addWidget(self.effective_limits_label)")
+        i_workers = src.index('QLabel("Max workers:")')
+        assert i_auto < i_line < i_workers, "limits + truth line must render first"
+
+    @pytest.mark.parametrize("theme", ["light", "dark"])
+    @pytest.mark.parametrize("size", [(740, 540), (820, 600)])
+    def test_grabs_both_themes_both_sizes(self, app, tmp_path, theme, size):
+        from ui_qt.theme import theme_manager
+
+        theme_manager.apply(app, theme)
+        step = _build_step5({"summarisation.provider": "ollama"})
+        try:
+            step._on_models_loaded(["Ternary-Bonsai-2-27B", "gemma3:12b", "qwen3-vl:8b"])
+            step.summ_combo.setCurrentIndex(step.summ_combo.findData("Ternary-Bonsai-2-27B"))
+            step.resize(*size)
+            step.show()
+            app.processEvents()
+            grab = step.grab()
+            assert not grab.isNull()
+            out = tmp_path / f"step5_{theme}_{size[0]}x{size[1]}.png"
+            assert grab.save(str(out)), "the render artifact must save"
+            assert out.stat().st_size > 500, "a real render is never tiny"
+        finally:
+            step.hide()
+            step.deleteLater()
+            theme_manager.apply(app, "light")  # restore the default
