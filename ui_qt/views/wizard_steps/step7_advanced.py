@@ -227,6 +227,11 @@ class Step7Advanced(WizardStep):
         box_lay.addWidget(self.disclosure)
         self.disclosure.setVisible(False)
         self._sync_token_gate()
+        # The fold button starts with its chevron-right icon in place —
+        # the icon is only swapped in _on_fold_toggled, so the initial
+        # state must be applied once here (the V0.7.5 VLM pass caught the
+        # bare-label render: iconless until first toggled).
+        self._on_fold_toggled(False)
 
         self.token_auto_cb.toggled.connect(lambda _on: self._sync_token_gate())
         self.strat_combo.currentTextChanged.connect(lambda _txt: self._sync_token_gate())
