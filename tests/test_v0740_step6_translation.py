@@ -265,18 +265,26 @@ def _qt_or_skip():
 
 
 class _StubController:
-    """The controller surface Step 6 touches (settings + the B1 lister)."""
+    """The controller surface Step 6 + the wizard shell touch (settings,
+    the B1 lister, and the keyring-shaped secret accessors)."""
 
     def __init__(self, settings=None, models=None, with_lister=True):
         self._settings: dict = dict(settings or {})
         self._models = list(models or [])
         self._with_lister = with_lister
+        self.secrets: dict = {}
 
     def get_setting(self, path, default=None):
         return self._settings.get(path, default)
 
     def update_setting(self, path, value):
         self._settings[path] = value
+
+    def get_secret(self, path, default=None):
+        return self.secrets.get(path, default)
+
+    def set_secret(self, path, value):
+        self.secrets[path] = value
 
     def list_ollama_models(self):
         if not self._with_lister:
@@ -983,3 +991,146 @@ class TestDeadKeysPurged:
         finally:
             Settings._instance = None
             Settings._test_override = None
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 6c — VRAM truth (B7): the real translation models flow into the check
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestVramCheckPassesRealModels:
+    """The audit's B7 (wizard_view.py:662): the conversion-start VRAM
+    check passed ``translation_model=s.summarisation_model`` — the
+    summariser standing in for the translator — so the Phase-3 estimate
+    billed the wrong model.  The real translator is the
+    ``translation.model`` setting (the same source
+    TranslationService.from_settings reads, service.py:255); the
+    harakat/judge models flow from the state as before."""
+
+    @pytest.fixture(scope="class")
+    def app(self):
+        QtWidgets = _qt_or_skip()
+        return QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+
+    @staticmethod
+    def _wizard(app, monkeypatch, tmp_path, settings=None):
+        """The real full WizardView (all 10 steps built offscreen, isolated
+        HOME, BOTH listing workers stubbed — the V0.7.3 pattern)."""
+        import tempfile
+
+        monkeypatch.setenv("HOME", tempfile.mkdtemp(prefix="elixir-v0740-home-"))
+        import ui_qt.views.wizard_steps.step5_models as step5_mod
+        import ui_qt.views.wizard_steps.step6_translation as step6_mod
+        from ui_qt.views.wizard_view import WizardView
+
+        stub = _StubController(settings or {})
+        orig5, orig6 = step5_mod.SimpleWorker, step6_mod.SimpleWorker
+        step5_mod.SimpleWorker = _FakeWorker
+        step6_mod.SimpleWorker = _FakeWorker
+        try:
+            view = WizardView(stub)
+        finally:
+            step5_mod.SimpleWorker = orig5
+            step6_mod.SimpleWorker = orig6
+        return view, stub
+
+    def test_the_stand_in_line_is_gone(self):
+        src = _src(_WIZARD)
+        assert "translation_model=s.summarisation_model" not in src
+
+    def test_enabled_passes_the_real_models(self, app, monkeypatch, tmp_path):
+        """Mock the calculator, assert the call args: the translator is
+        the translation.model SETTING (never the summarisation model);
+        harakat/judge flow from the state."""
+        import core.vram_calculator as vc
+
+        view, _stub = self._wizard(
+            app,
+            monkeypatch,
+            tmp_path,
+            settings={"translation.model": "translategemma:12b"},
+        )
+        try:
+            view.state.translation_enabled = True
+            view.state.translation_backend = "ollama"
+            view.state.summarisation_model = "Ternary-Bonsai-2-27B"
+            view.state.translation_harakat_model = "qwen2.5:7b"
+            view.state.translation_judge_model = "gemma3:12b"
+
+            seen = {}
+
+            def _capture(**kwargs):
+                seen.update(kwargs)
+                return ([], 1.0, 12.0, "rec")  # fits — no policy modal
+
+            monkeypatch.setattr(vc, "calculate_vram_budget", _capture)
+            monkeypatch.setattr(vc, "get_total_vram", lambda: 12.0)
+            assert view._check_vram_budget(None) is True
+            assert seen["translation_model"] == "translategemma:12b", (
+                "the REAL translator (translation.model setting), not the summariser"
+            )
+            assert seen["translation_model"] != view.state.summarisation_model
+            assert seen["harakat_model"] == "qwen2.5:7b"
+            assert seen["judge_model"] == "gemma3:12b"
+            assert seen["translation_backend"] == "ollama"
+            assert seen["summarization_model"] == "Ternary-Bonsai-2-27B"
+        finally:
+            view.hide()
+            view.deleteLater()
+
+    def test_missing_setting_falls_back_to_the_service_default(self, app, monkeypatch, tmp_path):
+        """No translation.model in settings → the same fallback the
+        service itself uses (translategemma:4b, service.py:255)."""
+        import core.vram_calculator as vc
+
+        view, _stub = self._wizard(app, monkeypatch, tmp_path)
+        try:
+            view.state.translation_enabled = True
+            view.state.translation_backend = "ollama"
+            view.state.summarisation_model = "Ternary-Bonsai-2-27B"
+
+            seen = {}
+
+            def _capture(**kwargs):
+                seen.update(kwargs)
+                return ([], 1.0, 12.0, "rec")
+
+            monkeypatch.setattr(vc, "calculate_vram_budget", _capture)
+            assert view._check_vram_budget(None) is True
+            assert seen["translation_model"] == "translategemma:4b"
+        finally:
+            view.hide()
+            view.deleteLater()
+
+    def test_disabled_blanks_every_translation_arg(self, app, monkeypatch, tmp_path):
+        """Translation off → no translation models in the budget (the
+        pre-existing gating, unchanged by the fix)."""
+        import core.vram_calculator as vc
+
+        view, _stub = self._wizard(app, monkeypatch, tmp_path)
+        try:
+            view.state.translation_enabled = False
+            view.state.summarisation_model = "Ternary-Bonsai-2-27B"
+            view.state.translation_harakat_model = "qwen2.5:7b"
+
+            seen = {}
+
+            def _capture(**kwargs):
+                seen.update(kwargs)
+                return ([], 1.0, 12.0, "rec")
+
+            monkeypatch.setattr(vc, "calculate_vram_budget", _capture)
+            assert view._check_vram_budget(None) is True
+            assert seen["translation_model"] == ""
+            assert seen["harakat_model"] == ""
+            assert seen["judge_model"] == ""
+            assert seen["translation_backend"] == ""
+        finally:
+            view.hide()
+            view.deleteLater()
+
+    def test_the_converter_side_check_agrees(self):
+        """The converter's own re-check (converter_impl.py:460) reads the
+        same setting — the two checks now agree on the translator."""
+        conv = _src(_project_root / "core" / "pipeline" / "converter_impl.py")
+        assert 'translation_model=self.settings.get("translation.model", "")' in conv

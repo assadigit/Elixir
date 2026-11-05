@@ -664,7 +664,23 @@ class WizardView(QDialog):
                 ocr_model=s.primary_ocr_model,
                 summarization_model=s.summarisation_model,
                 translation_backend=s.translation_backend if s.translation_enabled else "",
-                translation_model=s.summarisation_model,  # Ollama translator
+                # V0.7.4 (wizard rework ⑥, B7): the REAL translator — the
+                # translation.model setting, the same source
+                # TranslationService.from_settings reads (service.py:255).
+                # The old line passed the summarisation model standing in
+                # for the translator, so the Phase-3 VRAM estimate billed
+                # the wrong model (a 27B summariser instead of a 4B
+                # TranslateGemma, or vice versa).  The converter-side
+                # re-check (converter_impl.py:460) already read the real
+                # setting — the two checks now agree.
+                translation_model=(
+                    str(
+                        self.controller.get_setting("translation.model", "translategemma:4b")
+                        or "translategemma:4b"
+                    )
+                    if s.translation_enabled
+                    else ""
+                ),
                 harakat_model=s.translation_harakat_model if s.translation_enabled else "",
                 judge_model=s.translation_judge_model if s.translation_enabled else "",
                 tts_enabled=s.outputs_tts,
