@@ -229,7 +229,9 @@ class Step8Review(WizardStep):
         lines.append(f"  Convert separators: {'yes' if s.convert_separators_to_comments else 'no'}")
         lines.append(f"  DOCX author: {s.docx_author}")
         lines.append(f"  DOCX TOC: {'yes' if s.docx_include_toc else 'no'}")
-        lines.append(f"  Self-consistency: {'yes' if s.self_consistency else 'no'}")
+        # V0.7.5 (rework ⑦, 7b / D10): the self-consistency line is gone —
+        # it is no longer wizard-controlled (the Settings page owns it;
+        # printing a wizard-unset value here was the lying-review pattern).
         lines.append(f"  Coverage threshold: {s.coverage_threshold}%")
         lines.append(
             f"  Resume mode: {'yes — skip done chapters' if s.resume_enabled else 'no — reprocess all'}"

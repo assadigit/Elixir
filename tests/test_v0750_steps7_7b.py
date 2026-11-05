@@ -489,3 +489,158 @@ class TestStep7PhaseGateGrabs:
             step.hide()
             step.deleteLater()
             theme_manager.apply(app, "light")  # restore the default
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 7b — self-consistency relocation (D10): out of the wizard, into
+# Settings with truthful copy, default off, provider log line
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestSelfConsistencyRelocation:
+    """Removed from the wizard; backend kept; default off; the Settings →
+    AI-quality control carries truthful copy; a log line fires when it is
+    requested on an unsupported provider (no more silent no-op)."""
+
+    def test_checkbox_gone_from_step7b(self):
+        stripped = _strip_comments(_src(_STEP7B))
+        assert "self_consist_cb" not in stripped
+        assert "Self-consistency" not in stripped, "no self-consistency control on Step 7b"
+
+    def test_state_field_and_round_trip_key_gone(self):
+        stripped = _strip_comments(_src(_SHARED))
+        assert "self_consistency" not in stripped, "the wizard state no longer carries it"
+
+        from ui_qt.views.wizard_steps.shared import WizardState
+
+        ui = WizardState().to_ui_data()
+        assert "self_consistency" not in ui
+
+    def test_settings_choice_survives_a_wizard_run(self):
+        """The B5-class overwrite is gone: a Settings-enabled True flows
+        through build_request_from_ui when the wizard path doesn't carry
+        the key (the map row is settings-backed)."""
+        from ui_qt.views.wizard_steps.shared import WizardState
+
+        stub = _StubController({"summarisation.self_consistency": True})
+        req = stub.build_request_from_ui(WizardState().to_ui_data())
+        assert req.self_consistency is True
+        # And the wizard-open default (no settings entry) stays off.
+        req_off = _StubController().build_request_from_ui(WizardState().to_ui_data())
+        assert req_off.self_consistency is False
+
+    def test_default_off_everywhere(self):
+        """Backend kept, default OFF: the settings schema, the request
+        dataclass, and the Settings page's fallback all carry False."""
+        from core.models import ConversionRequest
+        from utils.settings import Settings
+
+        defaults = Settings.__new__(Settings)._defaults()
+        assert defaults["summarisation"]["self_consistency"] is False
+        req = ConversionRequest(input_path=Path("/tmp/x.pdf"), output_dir=Path("/tmp/out"))
+        assert req.self_consistency is False
+        page = _src(_project_root / "ui_qt" / "settings" / "sections" / "ai_prompt_quality.py")
+        assert 'get_setting("summarisation.self_consistency", False)' in page
+
+    def test_settings_page_carries_the_truthful_copy(self):
+        """The plan-mandated copy: Ollama-only; ~3-4× cost; union, not
+        majority vote (audit §W12: silently no-ops unless provider ==
+        'ollama', bullet_pipeline.py:992; the 'vote' is a union-merge
+        with fuzzy dedup, summarizer_chunking.py:274-327)."""
+        page = _src(_project_root / "ui_qt" / "settings" / "sections" / "ai_prompt_quality.py")
+        for phrase in (
+            "Ollama-only",
+            "~3-4× cost",
+            "union, not majority vote",
+        ):
+            assert phrase in page, f"the truthful copy must carry {phrase!r}"
+        # The old lying labels are gone.
+        assert "3× slower, more robust" not in page
+        assert "(temp 0, self-review, structured JSON)" not in page
+
+    def test_academic_rigor_label_no_longer_lies(self):
+        """Same finding family (§W11): the Settings page's rigor label
+        dropped the 'temperature=0' claim (it no longer happens,
+        summarizer_init.py:512-516)."""
+        page = _src(_project_root / "ui_qt" / "settings" / "sections" / "ai_prompt_quality.py")
+        assert "temp 0" not in page
+        assert "auto-enables for academic papers" in page
+
+    def test_start_log_and_review_no_longer_print_it(self):
+        for path in (_WIZARD, _STEP8):
+            stripped = _strip_comments(_src(path))
+            assert "Self-consistency:" not in stripped, f"{path.name} still prints it"
+
+
+class TestProviderLogLine:
+    """The silent no-op is gone: requesting self-consistency on a
+    non-Ollama provider logs a WARNING (bullet_pipeline.py's
+    run_self_consistency_and_review, the elif branch added V0.7.5)."""
+
+    @staticmethod
+    def _run(provider: str, self_consistency: bool) -> tuple[list[str], dict]:
+        from types import SimpleNamespace
+
+        from core.summarisation.bullet_pipeline import BulletPipeline
+
+        lines: list[str] = []
+
+        def log(msg, level="INFO"):
+            lines.append(f"{level}: {msg}")
+
+        fake_s = SimpleNamespace(
+            provider=provider,
+            self_consistency=self_consistency,
+            temperature=0.2,
+            academic_rigor=False,
+            primary_model="stub-model",
+            _summarize_with_model=lambda *a, **k: None,
+            log=log,
+        )
+        host = SimpleNamespace(s=fake_s)
+        result: dict = {
+            "executive_summary": "e",
+            "bullet_points": ["- b"],
+            "thorough_summary": "t",
+        }
+        BulletPipeline.run_self_consistency_and_review(
+            host, SimpleNamespace(), result, "Heading", "text"
+        )
+        return lines, result
+
+    def test_requested_on_llamacpp_logs_the_warning(self):
+        lines, result = self._run("llamacpp", True)
+        assert any(
+            "Self-consistency was requested but the provider is 'llamacpp'" in ln
+            and ln.startswith("WARNING")
+            for ln in lines
+        ), "the silent no-op must now be a loud skip"
+        assert any("only runs on Ollama" in ln for ln in lines)
+
+    def test_requested_on_ollama_still_runs(self):
+        lines, result = self._run("ollama", True)
+        # The Ollama path proceeds to the multi-sample loop (the sampler
+        # stub returns None → no merge); it must NOT hit the elif log.
+        assert not any("was requested but the provider is" in ln for ln in lines)
+
+    def test_off_on_any_provider_is_silent(self):
+        lines, _ = self._run("llamacpp", False)
+        assert not any("Self-consistency" in ln for ln in lines)
+        lines2, _ = self._run("ollama", False)
+        assert not any("Self-consistency" in ln for ln in lines2)
+
+
+class TestSelfConsistencyBackendUntouched:
+    """The backend stays (D10): the merge machinery + the Settings-page
+    save/reload keep working; only the wizard surface changed."""
+
+    def test_merge_is_still_the_union_not_a_vote(self):
+        """summarizer_chunking._merge_summaries keeps the union-merge with
+        fuzzy dedup (the honest description's referent)."""
+        chunking = _src(_project_root / "core" / "summarisation" / "summarizer_chunking.py")
+        assert "def _merge_summaries" in chunking
+        assert "token_set_ratio" in chunking, "the fuzzy dedup stays"
+
+    def test_settings_page_save_and_reload_survive(self):
+        page = _src(_project_root / "ui_qt" / "settings" / "sections" / "ai_prompt_quality.py")
+        assert '"summarisation.self_consistency", self.self_consist_cb.isChecked()' in page

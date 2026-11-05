@@ -11,6 +11,14 @@ group is DELETED — Step 5 is the single owner of the model context /
 output limits (its save-order overwrite here silently beat Step 5's
 values at Start; audit §W12). The summary-cache checkbox relocated
 into Quality controls.
+
+V0.7.5 (wizard rework ⑦, 7b / D10): the self-consistency checkbox is
+REMOVED from this step — it silently no-op'd unless the provider was
+Ollama (bullet_pipeline.py:992) and the "vote" is a union-merge, not a
+majority vote (~3-4× cost; audit §W12). The backend stays; the
+Settings → AI-quality page carries the only UI control with truthful
+copy; a WARNING log line fires when it is requested on an unsupported
+provider. 7c (same release) reworks the coverage line below.
 """
 
 from __future__ import annotations
@@ -111,16 +119,18 @@ class Step7bFineTune(WizardStep):
         docx_lay.addWidget(self.toc_cb)
         host_lay.addWidget(docx_box)
 
-        # ── Quality controls (4) ────────────────────────────────────────
+        # ── Quality controls (4) ────────────────────────────────────────────
+        # V0.7.5 (wizard rework ⑦, 7b / D10): the self-consistency checkbox
+        # is REMOVED from the wizard — it silently no-ops unless the
+        # provider is Ollama (bullet_pipeline.py:992) and the merge is a
+        # union, not a majority vote (~3-4× cost). The backend stays; the
+        # Settings → AI-quality page is the only UI writer (default off);
+        # a log line now fires when it is requested on an unsupported
+        # provider (no more silent no-op).
         q_box = QGroupBox("Quality controls")
         q_lay = QVBoxLayout(q_box)
         q_lay.setContentsMargins(10, 10, 10, 8)
         q_lay.setSpacing(5)
-        self.self_consist_cb = QCheckBox(
-            "Self-consistency (multi-sample voting — slower, more accurate)"
-        )
-        self.self_consist_cb.setChecked(self.state.self_consistency)
-        q_lay.addWidget(self.self_consist_cb)
         self.filter_cb = QCheckBox("Content filter (filter out headers/footers/non-content)")
         self.filter_cb.setChecked(self.state.enable_content_filter)
         q_lay.addWidget(self.filter_cb)
@@ -308,7 +318,10 @@ class Step7bFineTune(WizardStep):
         self.state.convert_separators_to_comments = self.separators_cb.isChecked()
         self.state.docx_author = self.author_edit.text().strip()
         self.state.docx_include_toc = self.toc_cb.isChecked()
-        self.state.self_consistency = self.self_consist_cb.isChecked()
+        # V0.7.5 (rework ⑦, 7b / D10): self_consistency is NO LONGER written
+        # here — the checkbox is gone from the wizard. The backend stays;
+        # the Settings page is the only UI writer; the request builder
+        # resolves it from settings when the wizard path doesn't carry it.
         self.state.coverage_threshold = self.coverage_spin.value()
         self.state.resume_enabled = self.resume_cb.isChecked()
         self.state.enable_content_filter = self.filter_cb.isChecked()

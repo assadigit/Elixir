@@ -135,7 +135,12 @@ class WizardState:
     docx_author: str = "Elixir"
     docx_include_toc: bool = True
     # Step 7b: Fine-tuning — Quality controls (V0.6.14: heavy_model retired)
-    self_consistency: bool = False
+    # V0.7.5 (wizard rework ⑦, 7b / D10): self_consistency is NO LONGER a
+    # wizard state field — the checkbox is gone from Step 7b (it silently
+    # no-op'd unless the provider was Ollama; the merge is a union, not a
+    # majority vote; ~3-4× cost). The backend stays; the Settings page is
+    # the only UI writer; the request builder resolves it from settings
+    # when the wizard path doesn't carry it.
     coverage_threshold: int = 85  # V13.34.0
     resume_enabled: bool = True  # V7.7.0: skip chapters with valid summaries on disk
     post_completion_action: str = "none"  # V8.1.0: "none"/"quit"/"sleep"/"hibernate"/"shutdown"
@@ -237,7 +242,10 @@ class WizardState:
             "docx_author": self.docx_author,
             "docx_include_toc": self.docx_include_toc,
             # Step 7b: Fine-tuning — Quality controls
-            "self_consistency": self.self_consistency,
+            # V0.7.5 (rework ⑦, 7b / D10): self_consistency is dropped from
+            # the wizard round-trip — Step 7b no longer forces False over
+            # the Settings choice (the B5-class overwrite). The request
+            # builder resolves it from settings (its map row stays).
             "coverage_threshold": self.coverage_threshold,
             "resume_enabled": self.resume_enabled,
             "enable_content_filter": self.enable_content_filter,

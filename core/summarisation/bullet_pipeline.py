@@ -1012,6 +1012,20 @@ class BulletPipeline:
                 )
                 result["model"] = "self_consistency"
                 s.log("    ✅ Self‑consistency merged", "INFO")
+        elif s.self_consistency:
+            # V0.7.5 (wizard rework ⑦, 7b / D10): no more SILENT no-op —
+            # the multi-sample path only runs on Ollama; when it is
+            # requested on any other provider (llama.cpp / LM Studio /
+            # cloud), say so instead of quietly skipping. The all-engines
+            # fix stays on the backlog (plan §5).
+            s.log(
+                f"    ⚠️ Self-consistency was requested but the provider is "
+                f"'{s.provider}' (not Ollama) — the multi-sample merge only "
+                f"runs on Ollama. Skipping; the single-pass summary stands. "
+                f"(Turn it off in Settings → AI quality, or switch the "
+                f"provider to Ollama.)",
+                "WARNING",
+            )
         if s.academic_rigor:
             # V13.45.5: REMOVED the coverage-threshold skip. The user explicitly
             # said: "Quality first, time second." Self-review now ALWAYS runs

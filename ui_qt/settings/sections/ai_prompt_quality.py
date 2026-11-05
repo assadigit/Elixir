@@ -269,12 +269,31 @@ class AiQualitySection(QGroupBox):
             checked=controller.get_setting("summarisation.b3_voting_enabled", False),
         )
         f.addRow("", self.b3_voting_cb)
+        # V0.7.5 (wizard rework ⑦, 7b / D10): relocated here from the
+        # wizard with TRUTHFUL copy (the audit §W12 finding: it silently
+        # no-ops unless the provider is Ollama — bullet_pipeline.py:992;
+        # the "vote" is a union-merge with fuzzy dedup,
+        # summarizer_chunking.py:274-327 — no majority/agreement threshold;
+        # ~3-4× cost). The all-engines fix stays on the backlog.
         self.self_consist_cb = labeled_checkbox(
-            "Enable self-consistency (3× slower, more robust)",
+            "Self-consistency (Ollama-only; ~3-4× cost; merges sample "
+            "agreement — union, not majority vote)",
             checked=controller.get_setting("summarisation.self_consistency", False),
         )
+        self.self_consist_cb.setToolTip(
+            "Generates 2-3 extra samples of each chapter at different "
+            "temperatures and merges them.\n\n"
+            "Be aware:\n"
+            "• Only runs when the provider is Ollama — on llama.cpp /\n"
+            "  LM Studio / cloud it is skipped (a warning is logged).\n"
+            "• ~3-4× the LLM cost (2-3 extra full-chapter calls).\n"
+            "• The merge is a UNION of sample agreement with fuzzy\n"
+            "  dedup — it keeps every bullet any sample produced, it does\n"
+            "  NOT majority-vote bullets away."
+        )
         self.academic_cb = labeled_checkbox(
-            "🔬 Academic Rigor (temp 0, self-review, structured JSON)",
+            "🔬 Academic Rigor (structured JSON + always-on self-review; "
+            "auto-enables for academic papers)",
             checked=controller.get_setting("summarisation.academic_rigor", False),
         )
         # V0.03 (P0-1): dropped-letter auto-repair toggle — OFF by default

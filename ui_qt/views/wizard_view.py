@@ -946,9 +946,10 @@ class WizardView(QDialog):
         )
         # Fine-tuning
         log.append(f"  Clean markdown: {s.clean_markdown}, Token saver: {s.token_saver}", "INFO")
-        log.append(
-            f"  Self-consistency: {s.self_consistency}, Coverage: {s.coverage_threshold}%", "INFO"
-        )
+        # V0.7.5 (rework ⑦, 7b / D10): self-consistency is no longer
+        # wizard-controlled — the line is gone (the Settings page owns it;
+        # printing a wizard-unset value here was the lying-log pattern).
+        log.append(f"  Coverage threshold: {s.coverage_threshold}%", "INFO")
         log.append(f"  Content filter: {s.enable_content_filter}", "INFO")
         log.append(
             f"  Max context: {s.max_context_tokens}, Max output: {s.max_output_tokens}", "INFO"
