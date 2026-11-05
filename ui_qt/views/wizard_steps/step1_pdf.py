@@ -14,14 +14,12 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QComboBox,
     QFileDialog,
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QMessageBox,
     QPushButton,
     QVBoxLayout,
 )
@@ -91,39 +89,6 @@ class Step1Pdf(WizardStep):
             grid.addWidget(tc, i // 3, i % 3)
         lay.addLayout(grid)
 
-        # V7.5.0 #8: Configuration profiles — save/load named setting bundles.
-        prof_box = QGroupBox("Configuration profiles (optional)")
-        prof_lay = QVBoxLayout(prof_box)
-        prof_lay.setContentsMargins(10, 10, 10, 8)
-        prof_lay.setSpacing(6)
-        prof_row = QHBoxLayout()
-        prof_row.setSpacing(6)
-        self.profile_combo = QComboBox()
-        self.profile_combo.setToolTip(
-            "Saved configuration profiles (models, outputs, translation, etc.)"
-        )
-        prof_row.addWidget(self.profile_combo, 1)
-        self.prof_save_btn = QPushButton("Save…")
-        self.prof_save_btn.setObjectName("Compact")
-        self.prof_save_btn.setCursor(Qt.PointingHandCursor)
-        self.prof_save_btn.setToolTip("Save the current wizard settings as a named profile")
-        self.prof_save_btn.clicked.connect(self._save_profile)
-        prof_row.addWidget(self.prof_save_btn)
-        self.prof_load_btn = QPushButton("Load")
-        self.prof_load_btn.setObjectName("Compact")
-        self.prof_load_btn.setCursor(Qt.PointingHandCursor)
-        self.prof_load_btn.setToolTip("Apply the selected profile to this wizard session")
-        self.prof_load_btn.clicked.connect(self._load_profile)
-        prof_row.addWidget(self.prof_load_btn)
-        self.prof_del_btn = QPushButton("Delete")
-        self.prof_del_btn.setObjectName("Compact")
-        self.prof_del_btn.setCursor(Qt.PointingHandCursor)
-        self.prof_del_btn.setToolTip("Delete the selected profile")
-        self.prof_del_btn.clicked.connect(self._delete_profile)
-        prof_row.addWidget(self.prof_del_btn)
-        prof_lay.addLayout(prof_row)
-        lay.addWidget(prof_box)
-
         lay.addStretch()
 
         # Select current source_type
@@ -131,7 +96,6 @@ class Step1Pdf(WizardStep):
             self._type_cards[self.state.source_type].set_selected(True)
         if self.state.input_path:
             self.pdf_edit.setText(self.state.input_path)
-        self._refresh_profiles()
 
     def _browse(self) -> None:
         last_dir = self.controller.get_setting("output.last_input_dir", "")
@@ -251,119 +215,6 @@ class Step1Pdf(WizardStep):
             self._detection_label.setStyleSheet(
                 f"color: {p.success}; background: transparent; font-size: 11px; padding: 4px;"
             )
-
-    # ── V7.5.0 #8: Configuration profiles ─────────────────────────────────
-    # Per-book fields (input_path, output_dir, selected_chapters) are excluded
-    # so a profile captures the reusable configuration (models, outputs,
-    # translation, fine-tuning) without pinning it to one file.
-    _PROFILE_EXCLUDE = ("input_path", "output_dir", "selected_chapters")
-
-    def _refresh_profiles(self) -> None:
-        """Repopulate the profiles dropdown."""
-        from core.pipeline.profiles import list_profiles
-
-        self.profile_combo.clear()
-        profiles = list_profiles()
-        if not profiles:
-            self.profile_combo.addItem("(no saved profiles)")
-            self.profile_combo.setEnabled(False)
-            self.prof_load_btn.setEnabled(False)
-            self.prof_del_btn.setEnabled(False)
-        else:
-            self.profile_combo.setEnabled(True)
-            self.prof_load_btn.setEnabled(True)
-            self.prof_del_btn.setEnabled(True)
-            for p in profiles:
-                self.profile_combo.addItem(p["name"])
-
-    def _save_profile(self) -> None:
-        from PySide6.QtWidgets import QInputDialog
-
-        from core.pipeline.profiles import save_profile
-
-        name, ok = QInputDialog.getText(self, "Save profile", "Profile name:")
-        if not ok or not name.strip():
-            return
-        name = name.strip()
-        # Serialize current wizard state, excluding per-book fields.
-        from dataclasses import asdict
-
-        data = {k: v for k, v in asdict(self.state).items() if k not in self._PROFILE_EXCLUDE}
-        if save_profile(name, data):
-            QMessageBox.information(self, "Profile saved", f"Profile '{name}' saved.")
-            self._refresh_profiles()
-            # Select the just-saved profile
-            idx = self.profile_combo.findText(name)
-            if idx >= 0:
-                self.profile_combo.setCurrentIndex(idx)
-        else:
-            QMessageBox.warning(self, "Save failed", f"Could not save profile '{name}'.")
-
-    def _load_profile(self) -> None:
-        from core.pipeline.profiles import load_profile
-
-        name = self.profile_combo.currentText()
-        if not name or name == "(no saved profiles)":
-            return
-        data = load_profile(name)
-        if not data:
-            QMessageBox.warning(self, "Load failed", f"Could not load profile '{name}'.")
-            return
-        # Apply each field to self.state (skip per-book + unknown fields).
-        applied = 0
-        for k, v in data.items():
-            if k in self._PROFILE_EXCLUDE:
-                continue
-            if hasattr(self.state, k):
-                try:
-                    setattr(self.state, k, v)
-                    applied += 1
-                except Exception as _e:
-                    logger.debug("ignored %s: %s", type(_e).__name__, _e)
-        # Also mirror key settings into the controller so already-built step
-        # widgets that read from controller.get_setting() on save_to_state
-        # pick up the profile values.
-        _STATE_TO_SETTING = {
-            "summarisation_model": "summarisation.model",
-            "primary_ocr_model": "ocr.primary_model",
-            "max_workers": "summarisation.max_workers",
-            "temperature": "summarisation.temperature",
-            "translation_backend": "translation.backend",
-            "translation_target_lang": "translation.default_target_lang",
-            "translation_harakat_model": "translation.harakat_model",
-            "coverage_threshold": "summarisation.coverage_threshold",
-            "resume_enabled": "summarisation.resume_enabled",
-        }
-        for sk, setting_key in _STATE_TO_SETTING.items():
-            if sk in data:
-                self.controller.update_setting(setting_key, data[sk])
-        QMessageBox.information(
-            self,
-            "Profile loaded",
-            f"Profile '{name}' applied ({applied} settings).\n\n"
-            "The conversion will use these settings. Step widgets may still\n"
-            "show the previous values until you reopen the wizard.",
-        )
-
-    def _delete_profile(self) -> None:
-        from core.pipeline.profiles import delete_profile
-
-        name = self.profile_combo.currentText()
-        if not name or name == "(no saved profiles)":
-            return
-        ret = QMessageBox.question(
-            self,
-            "Delete profile",
-            f"Delete profile '{name}'? This cannot be undone.",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No,
-        )
-        if ret != QMessageBox.Yes:
-            return
-        if delete_profile(name):
-            self._refresh_profiles()
-        else:
-            QMessageBox.warning(self, "Delete failed", f"Could not delete profile '{name}'.")
 
     def _on_type_selected(self, value: str) -> None:
         self.state.source_type = value

@@ -755,62 +755,6 @@ class TestDependencyCheckerCacheAndCheckAll:
         assert checker.model_exists("gemma3:12b") is False
 
 
-class TestProfilesRoundtrip:
-    """core/pipeline/profiles.py — the wizard's named-settings profiles.
-    _PROFILES_DIR is redirected to tmp_path (the module writes the real
-    ~/.elixir otherwise — the suite-wide hermeticity question is a separate
-    open operator decision, but NEW tests must not add to it)."""
-
-    @pytest.fixture(autouse=True)
-    def _profiles_dir(self, tmp_path, monkeypatch):
-        import core.pipeline.profiles as profiles_mod
-
-        monkeypatch.setattr(profiles_mod, "_PROFILES_DIR", tmp_path / "profiles")
-        return profiles_mod
-
-    def test_sanitize_name(self):
-        from core.pipeline.profiles import _sanitize_name
-
-        assert _sanitize_name('My "Book": Psychology?') == "My_Book_Psychology"
-        assert _sanitize_name("a/b\\c|d*e") == "abcde"
-        assert _sanitize_name("   spaced   name   ") == "spaced_name"
-        assert len(_sanitize_name("x" * 100)) == 60
-        assert _sanitize_name(":::") == ""
-
-    def test_save_list_load_delete_roundtrip(self):
-        from core.pipeline.profiles import delete_profile, list_profiles, load_profile, save_profile
-
-        settings = {"source_type": "academic_paper", "outputs": {"briefing": True}}
-        assert save_profile("Psychology Book", settings) is True
-        profiles = list_profiles()
-        assert len(profiles) == 1
-        assert profiles[0]["name"] == "Psychology Book"
-        assert profiles[0]["created_at"]  # ISO timestamp recorded
-        assert load_profile("Psychology Book") == settings
-        assert delete_profile("Psychology Book") is True
-        assert load_profile("Psychology Book") is None
-        assert delete_profile("Psychology Book") is False  # already gone
-
-    def test_load_missing_returns_none(self):
-        from core.pipeline.profiles import load_profile
-
-        assert load_profile("Never Saved") is None
-
-    def test_save_empty_name_false(self):
-        from core.pipeline.profiles import save_profile
-
-        assert save_profile(":::", {"a": 1}) is False  # sanitizes to empty
-
-    def test_list_skips_corrupt_json(self, tmp_path):
-        import core.pipeline.profiles as profiles_mod
-
-        (tmp_path / "profiles").mkdir(parents=True, exist_ok=True)
-        (tmp_path / "profiles" / "corrupt.json").write_text("{not json", encoding="utf-8")
-        assert profiles_mod.save_profile("Good One", {"k": 1}) is True
-        profiles = profiles_mod.list_profiles()
-        assert [p["name"] for p in profiles] == ["Good One"]  # corrupt skipped
-
-
 class TestMultiPdfMerge:
     """core/pipeline/multi_pdf_merge.py — merge_books."""
 

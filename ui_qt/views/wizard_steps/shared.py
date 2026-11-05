@@ -63,10 +63,11 @@ class WizardState:
     outputs_tts: bool = False
     # V10.29.0 (Sprint 2.1): The 6 fields below were accessed via
     # getattr(self, "outputs_X", False) in to_ui_data() but were NOT
-    # declared as dataclass fields.  This meant asdict(self.state) (used by
-    # _save_profile) silently dropped them → save/load profile lost these
-    # 6 outputs every time.  Declaring them here fixes the silent data-loss
-    # bug.  All default to False (opt-in), matching ConversionRequest.
+    # declared as dataclass fields — the historical consumers silently
+    # dropped them. Declaring them here fixed that data-loss bug. All
+    # default to False (opt-in), matching ConversionRequest. (V0.7.0: the
+    # profiles machinery that motivated the fix is retired, D4; the
+    # declaration stays — it is what to_ui_data reads.)
     outputs_evidence_map: bool = False  # V10.1.0: Scientific Evidence Map
     outputs_qa: bool = False  # V10.17.0: Q&A study questions
     outputs_glossary: bool = False  # V10.20.0: Glossary
