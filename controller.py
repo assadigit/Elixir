@@ -563,6 +563,9 @@ class Controller:
             "primary_ocr_model": request.primary_ocr_model,
             "fallback_ocr_model": request.fallback_ocr_model,
             "ocr_mode": request.ocr_mode,
+            # V0.7.1 (B3): saved so the regenerate path round-trips them.
+            "ocr_timeout": request.ocr_timeout,
+            "use_paddleocr": request.use_paddleocr,
             "image_max_size": request.image_max_size,
             "clean_markdown": request.clean_markdown,
             "fix_missing_spaces": request.fix_missing_spaces,
@@ -701,6 +704,13 @@ class Controller:
         # auto). V0.7.1 (wizard rework ③): the deprecated full-OCR alias's
         # map row is purged (one release after V0.7.0).
         ("ocr_mode", "ocr_mode", "ocr.mode", "auto", None),
+        # V0.7.1 (wizard rework ③, B3): the two dead Step-3 controls
+        # round-trip through the map like every other field — they
+        # were previously dropped by to_ui_data (only their Settings
+        # dialog twins worked; audit §W5 / B3). The ≥120s floor stays
+        # in OCRService (the backend clamp, wherever the value came from).
+        ("ocr_timeout", "ocr_timeout", "ocr.timeout", 120, None),
+        ("use_paddleocr", "use_paddleocr", "ocr.use_paddleocr", False, None),
         # V18.20.4.3 (P2 / W-c1): fallback defaults unified with the
         # canonical ``utils/settings.py`` defaults + USER_OLLAMA_MODELS.md
         # (these fire only when the settings file lacks the key — the old

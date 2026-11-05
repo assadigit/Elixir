@@ -141,14 +141,25 @@ class OCRService:
         self._image_dpi = settings.get("ocr.image_dpi", 300)
 
         # --- FIX: Force OCR timeout to at least 120 seconds ---
-        raw_timeout = settings.get("ocr.timeout", 120)
+        # V0.7.1 (wizard rework ③, B3): the request carries the wizard's
+        # value through _REQUEST_FIELD_MAP (previously only the settings
+        # twin worked); prefer the request, fall back to settings, and
+        # clamp to the ≥120s floor wherever the value came from.
+        raw_timeout = getattr(request, "ocr_timeout", None)
+        if raw_timeout is None:
+            raw_timeout = settings.get("ocr.timeout", 120)
+        raw_timeout = int(raw_timeout)
         self._ocr_timeout = max(120, raw_timeout)  # enforce minimum
         self.log(
             f"  🔧 OCR timeout set to {self._ocr_timeout}s (requested: {raw_timeout}s)", "DEBUG"
         )
 
         # PaddleOCR toggle
-        self._use_paddleocr = settings.get("ocr.use_paddleocr", False)
+        # V0.7.1 (B3): same request-first discipline as the timeout above.
+        _req_paddle = getattr(request, "use_paddleocr", None)
+        if _req_paddle is None:
+            _req_paddle = settings.get("ocr.use_paddleocr", False)
+        self._use_paddleocr = bool(_req_paddle)
         self._paddle_ocr = None  # lazy‑initialised
 
         # V0.7.0 (wizard rework ②, D2): the scanned-mode engine set. In

@@ -978,6 +978,10 @@ class QueueView(QWidget):
             "password": None,
             "use_llm_ocr": self.controller.get_setting("ocr.use_llm", True),
             "ocr_mode": self.controller.get_setting("ocr.mode", "auto"),
+            # V0.7.1 (wizard rework ③, B3): the queue path carries them
+            # through the same map rows (previously settings-only).
+            "ocr_timeout": self.controller.get_setting("ocr.timeout", 120),
+            "use_paddleocr": self.controller.get_setting("ocr.use_paddleocr", False),
             "source_type": self.controller.get_setting("source_type", "normal_book"),
             "include_executive_summary": self.controller.get_setting(
                 "summarisation.include_executive_summary", True

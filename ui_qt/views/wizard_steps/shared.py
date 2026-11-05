@@ -160,6 +160,11 @@ class WizardState:
             "selected_chapters": self.selected_chapters,
             "page_group_size": self.page_group_size,
             "use_llm_ocr": self.use_llm_ocr,
+            # V0.7.1 (wizard rework ③, B3): the two controls previously
+            # dropped here never reached the request — the dead-control
+            # bug class the audit killed (§1/§W5).
+            "ocr_timeout": self.ocr_timeout,
+            "use_paddleocr": self.use_paddleocr,
             "image_max_size": 1200,
             "extract_tables": self.extract_tables,
             "extract_figure_text": self.extract_figure_text,

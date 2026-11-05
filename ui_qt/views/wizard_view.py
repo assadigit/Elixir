@@ -297,6 +297,11 @@ class WizardView(QDialog):
             if _ocr_mode not in ("digital", "scanned", "auto"):
                 _ocr_mode = "auto"
             self.state.ocr_mode = _ocr_mode
+            # V0.7.1 (wizard rework ③, B3): the OCR timeout + PaddleOCR
+            # toggle load-then-save — the wizard opens on what the user
+            # last chose (they reach the backend since this version).
+            self.state.ocr_timeout = max(120, int(s.get_setting("ocr.timeout", 120)))
+            self.state.use_paddleocr = bool(s.get_setting("ocr.use_paddleocr", False))
             # Apply to state (V0.6.14: fast_model / model_architecture retired)
             self.state.max_workers = int(_mw)
             self.state.temperature = float(_temp)

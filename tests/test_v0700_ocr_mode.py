@@ -118,7 +118,14 @@ class TestExtractionBranchPins:
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def _make_service(ocr_mode: str, logs: list) -> object:
+def _make_service(ocr_mode: str, logs: list, use_paddleocr: bool = True) -> object:
+    """Build an OCRService for the D2 engine-set pins.
+
+    V0.7.1 (B3): the PaddleOCR toggle rides the REQUEST now (not the
+    settings) — the default ``use_paddleocr=True`` mirrors the fixture's
+    old settings-side request: the D2 exclusion is only observable when
+    the user asked for it.
+    """
     from core.models import (
         ConversionRequest,
         PageAnalysis,
@@ -131,6 +138,7 @@ def _make_service(ocr_mode: str, logs: list) -> object:
         input_path=Path("book.pdf"),
         output_dir=Path("out"),
         ocr_mode=ocr_mode,
+        use_paddleocr=use_paddleocr,
     )
     analysis = PdfAnalysisResult(
         total_pages=1,
@@ -178,9 +186,9 @@ class TestScannedEngineSet:
         )
 
     def test_auto_mode_keeps_paddle_toggle(self):
-        """Auto mode keeps today's behavior — the settings toggle flows
-        through untouched (paddle not installed here → the init logs it
-        and disables it, but the D2 exclusion line must NOT appear)."""
+        """Auto mode keeps today's behavior — the toggle rides the request
+        through to the service (paddle not installed here → the init logs
+        it and disables it, but the D2 exclusion line must NOT appear)."""
         logs: list = []
         svc = _make_service("auto", logs)
         assert svc._scanned_mode is False

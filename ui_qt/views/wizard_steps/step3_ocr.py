@@ -64,8 +64,16 @@ class Step3Ocr(WizardStep):
         timeout_row = QHBoxLayout()
         timeout_row.setSpacing(8)
         self.timeout_combo = QComboBox()
-        self.timeout_combo.addItems(["30", "60", "90", "120", "180"])
-        self.timeout_combo.setCurrentText(str(self.state.ocr_timeout))
+        # V0.7.1 (wizard rework ③, B3): the 30/60/90 items were fiction —
+        # the values never reached the backend (dropped by to_ui_data) and
+        # the backend clamps to ≥120s anyway (ocr/service.py). Now the
+        # control reaches the request through _REQUEST_FIELD_MAP and the
+        # items are the honest 120/180/300 band.
+        self.timeout_combo.addItems(["120", "180", "300"])
+        _saved_timeout = str(self.state.ocr_timeout)
+        if self.timeout_combo.findText(_saved_timeout) < 0:
+            _saved_timeout = "120"  # a legacy sub-floor value → the honest floor
+        self.timeout_combo.setCurrentText(_saved_timeout)
         timeout_row.addWidget(QLabel("OCR timeout (seconds):"))
         timeout_row.addWidget(self.timeout_combo)
         timeout_row.addStretch()

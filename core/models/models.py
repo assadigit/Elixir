@@ -248,6 +248,14 @@ class ConversionRequest:
     fallback_ocr_model: str = DEFAULT_FALLBACK_OCR_MODEL
     image_max_size: int = 1200
     ocr_retries: int = 2
+    # V0.7.1 (wizard rework ③, B3): the wizard's Step-3 controls finally
+    # reach the backend — the request carries them through
+    # _REQUEST_FIELD_MAP (previously dropped by to_ui_data: only the
+    # Settings-dialog twins worked; audit §W5 / bug register B3).
+    # The backend clamps ocr_timeout to ≥120s (ocr/service.py's existing
+    # floor) whatever arrives.
+    ocr_timeout: int = 120
+    use_paddleocr: bool = False
 
     # Post-processing
     clean_markdown: bool = True
