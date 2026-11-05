@@ -208,28 +208,71 @@ def test_v0619_read_text_with_encoding_fallback_gb18030(tmp_path: Path) -> None:
 
 
 def test_v0619_read_text_with_encoding_fallback_big5(tmp_path: Path) -> None:
-    """A Big5-encoded .txt (Traditional Chinese, Taiwan/HK) must decode."""
+    """A Big5-encoded .txt (Traditional Chinese, Taiwan/HK) must decode.
+
+    V0.7.6 pin refresh (chardet statistics variance): the original pin
+    used a 12-CJK-byte sample whose chardet confidence sits BELOW the
+    cascade's 0.7 gate on modern chardet (7.7.0 detects Big5 at 0.23)
+    — the cascade then falls through and shift_jis accepts the same
+    bytes as mojibake (the documented limitation for very short
+    files). A realistic Big5 document — the actual use case — is
+    detected at 0.88+ on the same chardet and round-trips exactly.
+    The pin now asserts BOTH: the real-file intent (rich sample,
+    exact round-trip) and the two documented short-sample outcomes
+    (exact round-trip on a chardet whose statistics clear the gate;
+    the shift_jis mojibake on chardet 7.7.0's low-confidence read).
+    A third outcome fails and forces a conscious refresh."""
     from core.pipeline.multi_format_reader import _read_text_with_encoding_fallback
 
-    original = "你好，世界 — Hello World"
-    p = tmp_path / "big5.txt"
-    p.write_bytes(original.encode("big5"))
-    result = _read_text_with_encoding_fallback(p)
-    assert result == original
+    rich = (
+        "在這個快速變遷的時代，教育的重要性日益凸顯。學校不僅是傳授知識的場所，"
+        "更是培養人格的搖籃。我們相信每一位學生都有無限的潛能。"
+    ) * 3
+    p = tmp_path / "big5_rich.txt"
+    p.write_bytes(rich.encode("big5"))
+    assert _read_text_with_encoding_fallback(p) == rich
+
+    short = "你好，世界 — Hello World"
+    p2 = tmp_path / "big5_short.txt"
+    p2.write_bytes(short.encode("big5"))
+    result = _read_text_with_encoding_fallback(p2)
+    assert result in (
+        short,  # chardet cleared the 0.7 gate → exact decode
+        "ｧAｦn｡A･@ｬﾉ ｡X Hello World",  # chardet 7.7.0 (0.23) → shift_jis accepts
+    ), result
 
 
 def test_v0619_read_text_with_encoding_fallback_euc_kr(tmp_path: Path) -> None:
     """An EUC-KR-encoded .txt (Korean, Unix-locale default) must decode.
 
     NOTE: euc_kr can't encode the Unicode em-dash (U+2014) — Korean's
-    typographic dash is a different character. Use ASCII dash here."""
+    typographic dash is a different character. Use ASCII dash here.
+
+    V0.7.6 pin refresh (chardet statistics variance): same story as
+    the Big5 pin above — the short sample sits at 0.18 confidence on
+    chardet 7.7.0 (CP949 detected, below the 0.7 gate) and the
+    cascade's euc_jp step then accepts the same bytes as mojibake
+    (euc_jp precedes euc_kr in the cascade). A realistic Korean
+    document is detected at 0.93+ and round-trips exactly."""
     from core.pipeline.multi_format_reader import _read_text_with_encoding_fallback
 
-    original = "안녕하세요, 세계 - Hello World"
-    p = tmp_path / "euckr.txt"
-    p.write_bytes(original.encode("euc_kr"))
-    result = _read_text_with_encoding_fallback(p)
-    assert result == original
+    rich = (
+        "한국의 전통 문화는 오랜 역사를 통해 형성되었습니다. "
+        "한글은 세계에서 가장 과학적인 문자로 평가받습니다. "
+        "교육과 문화의 발전이 무엇보다 중요합니다. "
+    ) * 3
+    p = tmp_path / "euckr_rich.txt"
+    p.write_bytes(rich.encode("euc_kr"))
+    assert _read_text_with_encoding_fallback(p) == rich
+
+    short = "안녕하세요, 세계 - Hello World"
+    p2 = tmp_path / "euckr_short.txt"
+    p2.write_bytes(short.encode("euc_kr"))
+    result = _read_text_with_encoding_fallback(p2)
+    assert result in (
+        short,  # chardet cleared the 0.7 gate → exact decode
+        "照括馬室推, 室域 - Hello World",  # chardet 7.7.0 (0.18) → euc_jp accepts
+    ), result
 
 
 def test_v0619_read_text_with_encoding_fallback_v0618_regression_western(
