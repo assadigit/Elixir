@@ -31,6 +31,102 @@
 >    information invented; the commits remain the authoritative record.
 
 
+## V0.6.86 — the wizard translation hotfix: the two live data-loss bugs (B1: the missing `Controller.list_ollama_models` — both UI call sites swallowed the AttributeError into empty model combos and the wizard save then wrote `""` over the saved `translation.harakat_model`/`judge_model`; fixed by the delegating controller method + an empty-selection guard in `_save_translation_settings`, and B5: the wizard force-disabled translation every run — `WizardState.translation_enabled` defaults False, `_load_settings_into_state` never read the translation settings, and `_save_translation_settings` wrote them unconditionally at every Start; fixed by the load-then-save round-trip)
+
+**The campaign step:** Phase ① of the approved wizard rework
+(`ELIXIR_WIZARD_REWORK_ROUND_2_PLAN.md`, decision D20 — hotfix both
+immediately, before any rework). Scope discipline: exactly these two
+bugs, nothing else; the shell restyle + 3-mode Step 1 + `ocr_mode`
+backend open the rework at V0.7.0 (next session per the Phase-3
+handoff prompt).
+
+**B1 evidence chain (audit §3, re-verified at 35f13c5):**
+`step6_translation.py:85` and `translation_page.py:151` call
+`self.controller.list_ollama_models()` — no such method exists on
+`Controller` (AttributeError → `except Exception` → `models = []` →
+empty combos). The wizard's `_save_translation_settings` then wrote
+`self.state.translation_harakat_model` (now `""` from the empty
+combo's `currentData() or ""`) into `translation.harakat_model` —
+destroying the saved model on every wizard run whose listing failed
+(the default state: the method never worked).
+
+**B1 fix (2 commits' first, `2a09376`):**
+- `Controller.list_ollama_models() -> list[str]`: delegates to
+  `utils/network.list_ollama_models` (network.py:173 — the audited fix
+  route; proxy-proof via `safe_ollama_request`, returns `[]` on
+  transport errors) with the base URL from the canonical
+  `llm.ollama_url` setting and `timeout=5` (the shared helper's 10s
+  default would double worst-case UI-thread blocks on blackholed
+  endpoints — the V0.6.8 UI-latency contract).
+- The empty-selection guard in `WizardView._save_translation_settings`:
+  a non-empty `translation.harakat_model` / `translation.judge_model`
+  is never overwritten with `""`; the skip logs
+  `"wizard save kept <path>=<value> (wizard selection was empty)"`.
+  Deliberate clearing stays possible via the Settings translation page
+  (its combos save unconditionally — including the Judge model's
+  "(use summarization model)" reset, which is therefore a
+  Settings-page action, not a wizard one).
+
+**B5 evidence chain:** `WizardState.translation_enabled: bool = False`
+(`shared.py:85`), `_load_settings_into_state` loaded twelve other
+setting families but no translation keys, and
+`_save_translation_settings` writes `translation.enabled` +
+`translation.backend` + `translation.default_target_lang` +
+`translation.harakat_model` + `translation.judge_model` + every
+`translation.outputs.*` unconditionally at conversion start — so every
+wizard Start silently wrote the dataclass defaults (off, "ollama",
+"fa", "", "", {chapter_summaries/keypoints/podcast: True, others
+False}) over the user's saved configuration. `translation.enabled` has
+exactly one writer in the whole tree: the wizard — the wipe killed the
+post-conversion auto-translate (`controller._maybe_translate_outputs`
+reads it).
+
+**B5 fix (`11d9787`):** `_load_settings_into_state` reads all six
+translation setting families at wizard open — BEFORE `_build_ui` builds
+the steps, so Step 6's enable checkbox and combos show the truth. The
+backend loads raw (Step 6 keeps its established legacy nllb→ollama
+display mapping at step6:62-63); per-output booleans load for every
+`_TRANSLATABLE_OUTPUTS` key (the same list the Step-6 checkboxes and
+the save iterate). The "unless the step changed it" contract is
+preserved: a user who flips Step 6 still writes their flip; a fresh
+install (nothing saved) still opens with translation off.
+
+**Tests (20, `tests/test_v0686_wizard_hotfix.py`, all passing):**
+AST/source pins (run on Qt-less rigs too) + behavioural pins
+(PySide6-gated via `pytest.importorskip`): the real Controller against a
+mocked network helper (list-shape, settings URL, 5s budget; transport
+failure → `[]`); the guard (preserves saved models on empty selection
+with the log line; writes through non-empty; both-empty stays a
+no-op); the B5 round-trips at state level AND through the REAL
+10-step wizard built offscreen (isolated HOME, dict-backed stub
+controller — open shows the Step-6 checkbox checked + saved Harakat
+model selected; the Start-path save keeps everything intact); the
+offscreen render gate (Step 6 combos POPULATED from a stubbed
+controller, saved models pre-selected, widget grabbed to PNG — pre-fix
+the same combos rendered empty every time).
+
+**Fail-on-pre-fix:** 12/20 fail on the unfixed code (7 B1 + 5 B5);
+the 8 that hold both sides are the deliberate both-sides contract pins
+(call-site text, the network helper's own shape, write-through paths,
+the unchanged dataclass default, the step-change-wins path, empty-
+settings defaults, the stubbed-controller render).
+
+**Suite gate (differential, this session's rig):** full suite minus
+the transcribe-podcast e2e file (which segfaults identically at the
+baseline commit on this rig — a venv/dependency artifact of the
+sandbox reset, proven by running it at `35f13c5`: same exit 139):
+**8,804 passed / 13 failed / 38 skipped** at the fixed HEAD vs.
+**the byte-identical 13** at `35f13c5` — **zero new failures**. The 13
+pre-existing failures (stale golden-freeze prompt manifest + 2 eval
+gates from the V0.6.43/V0.6.55 transcribe prompt additions shipped
+without the re-freeze procedure; 5 vibevoice live-subprocess rig tests;
+5 stale source pins from earlier releases) are documented for the next
+session's triage — none touch the wizard translation path. `ruff check`
+clean; all files this release touched are format-clean (the
+pre-existing 12-file `ruff format --check` drift from V0.6.76-0.6.82
+era commits is untouched, out of hotfix scope per Rule 2).
+
+
 ## V0.6.85 — UI/UX correction Round 5: the truthful backend status (a real connection-state model replaces the misleading "Ready" — Checking… / Connected / Backend offline / API unavailable / Not configured / Model unavailable, each derived from a REAL probe via the existing V0.6.69 poll for locals and ONE bounded async request for APIs; `LocalLLMStatus` gains the `models` evidence tuple so "Model unavailable" is only claimed when the listing is authoritative), the clean header (the duplicate Settings action AND the provider pill retired — provider selection + a one-shot async Test connection now live in Settings → AI), the Full Conversion Wizard card's VERIFIED vertical centering (equal bookend stretches + an explicitly right-aligned arrow disc; 10/10 live geometry checks), and the hero's decoration stepped back one more notch (circle alphas 24/18/14 → 14/10/7, hills 30/18 → 20/12)
 
 **The correction spec behind this release:** the Round-5 audit
