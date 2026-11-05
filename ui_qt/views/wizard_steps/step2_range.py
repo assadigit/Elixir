@@ -1,10 +1,17 @@
 """Step 2: Page Range — Step2Range (V18.20.4.6, P5 / O-b1 split).
 
-Moved VERBATIM from ui_qt/views/wizard_view.py (one module per
-wizard step): the class body below is byte-identical to the
-pre-split definition — only this module's top-of-file imports
-differ. ``ui_qt.views.wizard_view`` re-exports Step2Range
-(back-compat facade).
+V0.7.1 (wizard rework ③, items 3a+3b — audit §W4): the page range grows
+into a proper card (larger controls, a live feedback line, tooltips —
+"Process all pages" stays the default, the range fields enable on
+uncheck), and the TOC detection button is promoted from a quiet
+secondary action to a prominent card-level action (professional icon per
+D9 — the old emoji-prefixed label is gone — + honest caption "Most
+accurate — reads the book's own outline"). The backend
+(ChapterSelectorDialog → 7 scored parsers) is untouched — this is pure
+UI promotion, exactly what the audit prescribed.
+
+The item-3c UI (the processing-blocks row) lives in the Segmentation
+group; see tests/test_v0710_page_group_segmenter.py for its wiring.
 """
 
 from __future__ import annotations
@@ -24,6 +31,8 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
 )
 
+from ui_qt.components.icons import pixmap
+from ui_qt.theme import theme_manager
 from ui_qt.views.wizard_steps.shared import WizardStep
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -32,7 +41,8 @@ from ui_qt.views.wizard_steps.shared import WizardStep
 
 
 class Step2Range(WizardStep):
-    """Page range + page group size + auto-detect scanned + chapter selection."""
+    """Page range (card) + TOC chapter selection (promoted action) + the
+    processing-blocks row (V0.7.1 item 3c)."""
 
     # V0.7.0 (item 2b): the numbered StepHeader grammar — the base
     # class inserts the badge+title+caption above the built content.
@@ -46,40 +56,83 @@ class Step2Range(WizardStep):
         lay = QVBoxLayout(self)
         lay.setSpacing(8)
 
-        # Page range
+        # ── Page range card (V0.7.1 item 3a) ───────────────────────────
+        # The old group was small and quiet (audit §W4: "no tooltips, no
+        # size hints"); the card gives it 15px field labels, 32px
+        # spinboxes, a live feedback line, and tooltips.
         range_box = QGroupBox("Page range")
         range_lay = QVBoxLayout(range_box)
         range_lay.setContentsMargins(10, 10, 10, 8)
-        range_lay.setSpacing(6)
+        range_lay.setSpacing(8)
 
         self.all_pages_cb = QCheckBox("Process all pages")
         self.all_pages_cb.setChecked(True)
+        self.all_pages_cb.setStyleSheet("font-size: 14px; font-weight: 600;")
+        self.all_pages_cb.setToolTip(
+            "Checked (default): every page of the PDF is processed.\n"
+            "Uncheck to enter a specific page range — chapter selection is\n"
+            "then disabled (a chapter can span outside a chosen range)."
+        )
         self.all_pages_cb.stateChanged.connect(self._on_all_changed)
         range_lay.addWidget(self.all_pages_cb)
 
         custom_row = QHBoxLayout()
-        custom_row.setSpacing(8)
-        self.start_spin = QSpinBox()
-        self.start_spin.setRange(1, 99999)
-        self.start_spin.setValue(1)
+        custom_row.setSpacing(12)
+        self.start_spin = self._make_big_spin()
         self.start_spin.setEnabled(False)
-        custom_row.addWidget(QLabel("From page:"))
-        custom_row.addWidget(self.start_spin)
-        self.end_spin = QSpinBox()
-        self.end_spin.setRange(1, 99999)
+        self.start_spin.setToolTip("First page to process (1-based).")
+        self.end_spin = self._make_big_spin()
         self.end_spin.setValue(99999)
         self.end_spin.setEnabled(False)
-        custom_row.addWidget(QLabel("To page:"))
+        self.end_spin.setToolTip("Last page to process (1-based).")
+        # The feedback line is LIVE: every spin change refreshes it.
+        self.start_spin.valueChanged.connect(lambda *_: self._refresh_feedback())
+        self.end_spin.valueChanged.connect(lambda *_: self._refresh_feedback())
+        custom_row.addWidget(self._field_label("From page:"))
+        custom_row.addWidget(self.start_spin)
+        custom_row.addWidget(self._field_label("To page:"))
         custom_row.addWidget(self.end_spin)
         custom_row.addStretch()
         range_lay.addLayout(custom_row)
+
+        # Live feedback line (item 3a): updates on every toggle/spin
+        # change and after a chapter selection.
+        self.feedback_lbl = QLabel("")
+        self.feedback_lbl.setObjectName("Caption")
+        self.feedback_lbl.setWordWrap(True)
+        range_lay.addWidget(self.feedback_lbl)
         lay.addWidget(range_box)
 
-        # Chapter selection (TOC)
-        chapter_box = QGroupBox("Chapter selection (optional)")
+        # ── TOC detection card (V0.7.1 item 3b) ────────────────────────
+        # The old emoji-prefixed "Detect chapters from TOC" secondary
+        # button becomes a prominent card-level action: professional
+        # icon (D9 — no emoji on controls) + title + honest caption. The
+        # checkbox + dialog mechanics are UNCHANGED (the backend is
+        # solid, audit §W4).
+        chapter_box = QGroupBox("Chapters from the table of contents")
         chapter_lay = QVBoxLayout(chapter_box)
         chapter_lay.setContentsMargins(10, 10, 10, 8)
-        chapter_lay.setSpacing(6)
+        chapter_lay.setSpacing(8)
+
+        head_row = QHBoxLayout()
+        head_row.setSpacing(10)
+        p = theme_manager.palette
+        self.toc_icon_lbl = QLabel()
+        self.toc_icon_lbl.setPixmap(pixmap("list-checks", color=p.accent, size=22))
+        self.toc_icon_lbl.setFixedSize(24, 24)
+        head_row.addWidget(self.toc_icon_lbl)
+
+        head_txt = QVBoxLayout()
+        head_txt.setSpacing(1)
+        toc_title = QLabel("Detect chapters from the table of contents")
+        toc_title.setStyleSheet("font-size: 13px; font-weight: 600;")
+        head_txt.addWidget(toc_title)
+        toc_caption = QLabel("Most accurate — reads the book's own outline.")
+        toc_caption.setObjectName("Caption")
+        toc_caption.setWordWrap(True)
+        head_txt.addWidget(toc_caption)
+        head_row.addLayout(head_txt, 1)
+        chapter_lay.addLayout(head_row)
 
         self.select_chapters_cb = QCheckBox("Select specific chapters from table of contents")
         self.select_chapters_cb.toggled.connect(self._on_chapter_toggled)
@@ -87,9 +140,11 @@ class Step2Range(WizardStep):
 
         chapter_row = QHBoxLayout()
         chapter_row.setSpacing(8)
-        self.chapter_btn = QPushButton("🔍 Detect chapters from TOC")
-        self.chapter_btn.setObjectName("Secondary")
+        self.chapter_btn = QPushButton("Detect chapters…")
+        self.chapter_btn.setObjectName("Primary")
+        self.chapter_btn.setIcon(pixmap("search", color="#FFFFFF", size=16))
         self.chapter_btn.setCursor(Qt.PointingHandCursor)
+        self.chapter_btn.setMinimumHeight(34)
         # V10.1.1 fix: button is always enabled (when the group is active).
         # The old behaviour disabled the button until the checkbox above it
         # was checked — users saw a greyed-out button and didn't realise
@@ -112,13 +167,14 @@ class Step2Range(WizardStep):
         chapter_lay.addLayout(chapter_row)
 
         self._selected_chapters: list[str] | None = None
+        self._total_pages: int | None = None  # best-effort page count
         lay.addWidget(chapter_box)
 
-        # Segmentation — the D5 UI (V0.7.1 item 3c): the honest
-        # processing-blocks row. The old "Page group size" spin was a
-        # dead control (audit §W4: logged and ignored); it is now wired
-        # to the PageGroupSegmenter fallback — 0 = AUTO (measured from
-        # the book's page density), 4-25 = manual override.
+        # ── Segmentation — the D5 UI (V0.7.1 item 3c) ──────────────────
+        # The honest processing-blocks row. The old "Page group size" spin
+        # was a dead control (audit §W4: logged and ignored); it is now
+        # wired to the PageGroupSegmenter fallback — 0 = AUTO (measured
+        # from the book's page density), 4-25 = manual override.
         seg_box = QGroupBox("Segmentation")
         seg_lay = QVBoxLayout(seg_box)
         seg_lay.setContentsMargins(10, 10, 10, 8)
@@ -166,11 +222,84 @@ class Step2Range(WizardStep):
         lay.addWidget(seg_box)
         lay.addStretch()
 
-    def _on_blocks_auto_changed(self, checked: bool) -> None:
-        """V0.7.1 (3c): Auto checked → the override spin is disabled and
-        0 (AUTO) flows to the request; unchecked → manual 4-25."""
-        self.group_spin.setEnabled(not checked)
-        self._override_lbl.setEnabled(not checked)
+        self._read_total_pages()
+        self._refresh_feedback()
+
+    # ── card helpers (item 3a) ─────────────────────────────────────────
+
+    @staticmethod
+    def _field_label(text: str) -> QLabel:
+        lbl = QLabel(text)
+        lbl.setStyleSheet("font-size: 15px; font-weight: 500;")
+        return lbl
+
+    @staticmethod
+    def _make_big_spin() -> QSpinBox:
+        """A 32px-tall, 14px-text spinbox (the old ones were ~24px)."""
+        spin = QSpinBox()
+        spin.setRange(1, 99999)
+        spin.setValue(1)
+        spin.setFixedHeight(32)
+        spin.setMinimumWidth(88)
+        spin.setStyleSheet("font-size: 14px;")
+        return spin
+
+    # ── live feedback (item 3a) ────────────────────────────────────────
+
+    def _read_total_pages(self) -> None:
+        """Best-effort page count from the PDF chosen in Step 1.
+
+        pypdf's xref parse is milliseconds even on large files; failure
+        (no file yet / encrypted / unparsable) leaves the count unknown —
+        the feedback line then omits it (honest, never guessed).
+        """
+        inp = self.state.input_path
+        if not inp or not Path(inp).exists():
+            self._total_pages = None
+            return
+        try:
+            from pypdf import PdfReader
+
+            self._total_pages = len(PdfReader(str(inp)).pages)
+        except Exception:
+            self._total_pages = None
+
+    def showEvent(self, event) -> None:  # noqa: N802 (Qt naming)
+        """Refresh on every show — the PDF is picked in Step 1, AFTER this
+        step was built (steps are constructed once at wizard open), so the
+        page count and feedback must be recomputed here."""
+        super().showEvent(event)
+        self._read_total_pages()
+        self._refresh_feedback()
+
+    def _refresh_feedback(self) -> None:
+        """The live feedback line — every state, honestly worded."""
+        if self.all_pages_cb.isChecked():
+            chapters = len(self._selected_chapters or [])
+            if self._total_pages:
+                base = f"All {self._total_pages} pages will be processed."
+            else:
+                base = "All pages will be processed."
+            if chapters:
+                base += f" {chapters} chapter(s) selected from the table of contents."
+            self.feedback_lbl.setText(base)
+            return
+        start = self.start_spin.value()
+        end = self.end_spin.value()
+        span = max(0, end - start + 1)
+        if start > end:
+            self.feedback_lbl.setText(f"Pages {start}-{end} — 'from' must be ≤ 'to'.")
+            return
+        if self._total_pages:
+            pct = round(span / self._total_pages * 100)
+            self.feedback_lbl.setText(
+                f"Pages {start}-{end} — {span} of {self._total_pages} pages "
+                f"(~{pct}%) will be processed."
+            )
+        else:
+            self.feedback_lbl.setText(f"Pages {start}-{end} — {span} pages will be processed.")
+
+    # ── handlers ────────────────────────────────────────────────────────
 
     def _on_all_changed(self) -> None:
         all_pages = self.all_pages_cb.isChecked()
@@ -188,6 +317,13 @@ class Step2Range(WizardStep):
             self.select_chapters_cb.setEnabled(True)
             # V10.1.1: button is always enabled when the group is active.
             self.chapter_btn.setEnabled(True)
+        self._refresh_feedback()
+
+    def _on_blocks_auto_changed(self, checked: bool) -> None:
+        """V0.7.1 (3c): Auto checked → the override spin is disabled and
+        0 (AUTO) flows to the request; unchecked → manual 4-25."""
+        self.group_spin.setEnabled(not checked)
+        self._override_lbl.setEnabled(not checked)
 
     def _on_chapter_toggled(self, checked: bool) -> None:
         # V10.1.1: the button is no longer gated by this checkbox.
@@ -197,6 +333,7 @@ class Step2Range(WizardStep):
         if not checked:
             self._selected_chapters = None
             self.chapter_count_lbl.setText("")
+        self._refresh_feedback()
 
     def _open_chapter_selector(self) -> None:
         """Open the TOC chapter selector dialog.
@@ -237,6 +374,7 @@ class Step2Range(WizardStep):
             self.select_chapters_cb.setChecked(False)
             self._selected_chapters = None
             self.chapter_count_lbl.setText("")
+            self._refresh_feedback()
             return
 
         selected = dlg.get_selected_chapters()
@@ -246,6 +384,9 @@ class Step2Range(WizardStep):
         else:
             self.chapter_count_lbl.setText("")
             self.select_chapters_cb.setChecked(False)
+        self._refresh_feedback()
+
+    # ── state ────────────────────────────────────────────────────────────
 
     def save_to_state(self) -> None:
         if self.all_pages_cb.isChecked():
