@@ -125,7 +125,7 @@ class Step3Ocr(WizardStep):
         )
         disc_lay.addWidget(self.vision_cb)
 
-        self.figures_cb = QCheckBox("Figure & table text extraction (vision OCR)")
+        self.figures_cb = QCheckBox("Figure && table text extraction (vision OCR)")
         self.figures_cb.setChecked(self.state.extract_figure_text)
         self.figures_cb.setToolTip(
             "Charts and tables on text pages are read out as text — the page "

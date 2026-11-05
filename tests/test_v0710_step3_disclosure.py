@@ -101,6 +101,13 @@ class TestStep3SourcePins:
         assert 'QCheckBox("Force OCR on every page' not in src
         assert "force_ocr_cb" not in src
 
+    def test_ampersand_label_is_escaped(self):
+        """'Figure & table' must use Qt's '&&' escape — a bare '&' becomes
+        a mnemonic and the ampersand vanishes from the render (caught by
+        the VLM pass on the first render of this step)."""
+        src = _src(_STEP3)
+        assert 'QCheckBox("Figure && table text extraction' in src
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Offscreen layer (needs PySide6)
