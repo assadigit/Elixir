@@ -53,6 +53,28 @@ def _runtime_sources() -> list[Path]:
     return out
 
 
+def _read_runtime(p: Path) -> str:
+    """V0.7.7 amendment (audit HY-1): utils/settings.py's legacy-file
+    migration del-loop is the SANCTIONED purge of the dead keys (the
+    v0740 'no reader outside the purge itself' pattern) — its lines are
+    stripped before the zero-reader sweep; every other mention anywhere
+    still fails the pin."""
+    src = p.read_text(encoding="utf-8")
+    if p.name == "settings.py" and p.parent.name == "utils":
+        kept, skipping = [], False
+        for line in src.splitlines(keepends=True):
+            if "for _ocr_dead_key in (" in line:
+                skipping = True
+                continue
+            if skipping:
+                if line.strip().startswith(")"):
+                    skipping = False
+                continue
+            kept.append(line)
+        src = "".join(kept)
+    return src
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # auto_detect_scanned — zero readers anywhere in runtime code
 # ═══════════════════════════════════════════════════════════════════════════
@@ -63,7 +85,7 @@ class TestAutoDetectScannedPurged:
         offenders = [
             str(p.relative_to(_project_root))
             for p in _runtime_sources()
-            if "auto_detect_scanned" in p.read_text(encoding="utf-8")
+            if "auto_detect_scanned" in _read_runtime(p)
         ]
         assert offenders == [], (
             "auto_detect_scanned is dead (log-only) and was purged in "
@@ -71,18 +93,17 @@ class TestAutoDetectScannedPurged:
         )
 
     def test_zero_test_references(self):
-        """The test tree keeps no stale stubs for the dead flag either."""
+        """The test tree keeps no stale stubs for the dead flag either
+        (the purge pins + the V0.7.7 legacy-pop pin are the grep needles)."""
+        _needles = {Path(__file__).name, "test_v0760_audit.py"}
         offenders = []
-        _self_name = Path(__file__).name
         for p in (_project_root / "tests").glob("test_*.py"):
-            if p.name == _self_name:
+            if p.name in _needles:
                 continue
             if "auto_detect_scanned" in p.read_text(encoding="utf-8"):
                 offenders.append(p.name)
         for p in (_project_root / "tests").glob("*.py"):
-            if p.name != Path(__file__).name and "auto_detect_scanned" in p.read_text(
-                encoding="utf-8"
-            ):
+            if p.name not in _needles and "auto_detect_scanned" in p.read_text(encoding="utf-8"):
                 offenders.append(p.name)
         assert offenders == [], f"stale auto_detect_scanned test stubs: {offenders}"
 

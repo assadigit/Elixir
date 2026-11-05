@@ -54,6 +54,7 @@ _RUNTIME_FILES = [
 # The purge needle — the deprecated alias purged in V0.7.1 after its
 # one-release compatibility window (V0.7.0).
 _ALIAS = "force" + "_ocr" + "_all" + "_pages"  # assembled: this file may name it
+_DEAD_FLAG = "auto" + "_detect" + "_scanned"  # assembled (the v0700 sweep is raw-string)
 
 
 def _runtime_sources() -> list[Path]:
@@ -63,6 +64,28 @@ def _runtime_sources() -> list[Path]:
             out.extend(p for p in d.rglob("*.py") if p.is_file())
     out.extend(p for p in _RUNTIME_FILES if p.exists())
     return out
+
+
+def _read_runtime(p: Path) -> str:
+    """V0.7.7 amendment (audit HY-1): utils/settings.py's legacy-file
+    migration del-loop is the SANCTIONED purge of the dead OCR keys (the
+    v0740 'no reader outside the purge itself' pattern) — its lines are
+    stripped before the zero-reader sweep; every other mention anywhere
+    still fails the pin."""
+    src = p.read_text(encoding="utf-8")
+    if p.name == "settings.py" and p.parent.name == "utils":
+        kept, skipping = [], False
+        for line in src.splitlines(keepends=True):
+            if "for _ocr_dead_key in (" in line:
+                skipping = True
+                continue
+            if skipping:
+                if line.strip().startswith(")"):
+                    skipping = False
+                continue
+            kept.append(line)
+        src = "".join(kept)
+    return src
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -75,7 +98,7 @@ class TestAliasPurged:
         offenders = [
             str(p.relative_to(_project_root))
             for p in _runtime_sources()
-            if _ALIAS in p.read_text(encoding="utf-8")
+            if _ALIAS in _read_runtime(p)
         ]
         assert offenders == [], (
             "the deprecated full-OCR alias was purged in V0.7.0+V0.7.1 "
@@ -85,11 +108,11 @@ class TestAliasPurged:
 
     def test_zero_test_references(self):
         """The test tree keeps no stale stubs for the purged alias either
-        (this pin file is the one exception — it IS the grep needle)."""
+        (this pin file + the V0.7.7 legacy-pop pin are the grep needles)."""
+        _needles = {Path(__file__).name, "test_v0760_audit.py"}
         offenders = []
-        _self_name = Path(__file__).name
         for p in (_project_root / "tests").glob("*.py"):
-            if p.name == _self_name:
+            if p.name in _needles:
                 continue
             if _ALIAS in p.read_text(encoding="utf-8"):
                 offenders.append(p.name)
@@ -102,8 +125,19 @@ class TestAliasPurged:
         assert _ALIAS not in names, "the request field is purged (V0.7.1)"
 
     def test_settings_default_gone(self):
+        # V0.7.7 amendment (audit HY-1): the intent is the DEFAULTS dict
+        # carries no such key and no migration list can re-add it. The
+        # legacy-file pop (the sanctioned purge, V0.7.7) legitimately
+        # names the key — the v0740 reader-vs-purge pattern. The pin now
+        # asserts the DATA (the real _defaults()) + the no-resurrection
+        # tuple form, not whole-file string absence.
+        from utils.settings import Settings
+
+        defaults = Settings.__new__(Settings)._defaults()
+        assert _ALIAS not in defaults.get("ocr", {}), "the settings default key is purged (V0.7.1)"
+        assert _DEAD_FLAG not in defaults.get("ocr", {})
         src = (_project_root / "utils" / "settings.py").read_text(encoding="utf-8")
-        assert _ALIAS not in src, "the settings default key is purged (V0.7.1)"
+        assert f"({_ALIAS!r}" not in src, "no migration add-missing-keys list re-adds the alias"
 
     def test_content_preset_field_gone(self):
         """ContentPreset carried the field dead (never read by anything)."""
