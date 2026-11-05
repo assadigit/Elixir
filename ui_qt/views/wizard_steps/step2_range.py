@@ -142,7 +142,9 @@ class Step2Range(WizardStep):
         chapter_row.setSpacing(8)
         self.chapter_btn = QPushButton("Detect chapters…")
         self.chapter_btn.setObjectName("Primary")
-        self.chapter_btn.setIcon(pixmap("search", color="#FFFFFF", size=16))
+        # The icon tint rides the palette's on-accent token (never a
+        # hardcoded literal — the M1 de-hardcode census enforces this).
+        self.chapter_btn.setIcon(pixmap("search", color=p.text_on_accent, size=16))
         self.chapter_btn.setCursor(Qt.PointingHandCursor)
         self.chapter_btn.setMinimumHeight(34)
         # V10.1.1 fix: button is always enabled (when the group is active).
