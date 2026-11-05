@@ -305,10 +305,7 @@ class TestSourcePins:
         # expanded "(600s)" literal, which V0.6.31's deliberate
         # 600→3600 raise (aed75f5) made stale. The f-string form below is
         # the actual no-magic-number contract.
-        assert (
-            'f"VibeVoice subprocess timed out ({VIBEVOICE_LINE_TIMEOUT_S}s)'
-            in VIBE_SRC
-        )
+        assert 'f"VibeVoice subprocess timed out ({VIBEVOICE_LINE_TIMEOUT_S}s)' in VIBE_SRC
 
 
 # ── Behavioral: the shared base itself (O-c2) ───────────────────────────────
