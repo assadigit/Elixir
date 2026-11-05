@@ -1040,7 +1040,11 @@ class Settings:
                 # fast_model_temperature, fast_model_context, fast_api_url,
                 # fast_api_key, fast_api_model) are RETIRED with their schema
                 # keys — see the V0.6.14 retirement block below.
-                ("coverage_threshold", 50),
+                # V0.7.3 (wizard rework ⑤, audit §5): coverage 85 everywhere —
+                # the add-missing-keys default now matches the schema default
+                # (85, line above) and the request (0.85). Was 50 here,
+                # which re-introduced the disagreement for existing files.
+                ("coverage_threshold", 85),
                 ("overdeliver_enabled", True),  # V15.1.0
                 ("overdeliver_target", 100),  # V15.1.1: was 92, now 100
                 ("b3_voting_enabled", False),  # V15.1.1: new

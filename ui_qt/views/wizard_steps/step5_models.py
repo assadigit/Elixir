@@ -13,6 +13,7 @@ import logging
 
 from PySide6.QtCore import Qt, Slot
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QFrame,
     QGroupBox,
@@ -369,6 +370,33 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
         row.addStretch()
         params_lay.addLayout(row)
 
+        # ── V0.7.3 (wizard rework ⑤, D12): the limits — single owner ──
+        # Step 5 is the ONLY place these two fields are set (Step 7b's
+        # duplicate "Summarization limits" group is deleted this phase —
+        # its save-order overwrite, audit §W12, must not survive). Auto
+        # (default) disables the spins and lets the backend's clamp ladder
+        # decide; the read-only line underneath shows the truth either way.
+        limits_auto_row = QHBoxLayout()
+        limits_auto_row.setSpacing(8)
+        self.limits_auto_cb = QCheckBox("Auto — let the model class decide (recommended)")
+        self.limits_auto_cb.setChecked(True)
+        self.limits_auto_cb.setToolTip(
+            "Automatic limits: the values follow the model you picked.\n\n"
+            "The backend clamps whatever you request anyway:\n"
+            "• Context: at least 32,768 (the hardware floor), scaled by your\n"
+            "  GPU's VRAM when you leave it low.\n"
+            "• Output: 2,048 in compact mode · 8,192 for small models (< 13B)\n"
+            "  and low-bit quants · at least 16,000 for full-precision large\n"
+            "  models.\n\n"
+            "Uncheck to set both numbers yourself — the effective line below\n"
+            "still shows what will actually run. A known model can raise the\n"
+            "context further at start time (the model registry)."
+        )
+        self.limits_auto_cb.toggled.connect(self._on_limits_auto_toggled)
+        limits_auto_row.addWidget(self.limits_auto_cb)
+        limits_auto_row.addStretch()
+        params_lay.addLayout(limits_auto_row)
+
         # Model context size
         # V0.04: range widened to 1024–262144 (was 4096–131072) so the GUI
         # never caps a model's real window — 65k-class local models
@@ -386,7 +414,9 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
             "gemma4-12b: 32768 (32K)\n"
             "llama.cpp Ternary-Bonsai-2-27B: 65536 (65K)\n"
             "Cloud APIs: use the model's maximum (often 128K+).\n"
-            "Set per your model's maximum."
+            "Set per your model's maximum.\n\n"
+            "With Auto on, this shows the value the model class dictates\n"
+            "(never below the 32,768 hardware floor)."
         )
         ctx_row.addWidget(QLabel("Model context:"))
         ctx_row.addWidget(self.heavy_ctx_spin)
@@ -410,12 +440,32 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
             "llama.cpp Ternary-Bonsai-2-27B: 12288 (12K — the model's output cap)\n"
             "Ollama 27B quants: 16000\n"
             "This is a ceiling per call, not a target — shorter answers are fine.\n"
-            "The provider clamps requests to this automatically."
+            "The provider clamps requests to this automatically.\n\n"
+            "With Auto on, this shows the value the model class dictates\n"
+            "(2,048 compact · 8,192 small/low-bit · 16,000 large)."
         )
         out_row.addWidget(QLabel("Model output:"))
         out_row.addWidget(self.heavy_out_spin)
         out_row.addStretch()
         params_lay.addLayout(out_row)
+
+        # V0.7.3 (rework ⑤, D12): the computed-honesty line — read-only,
+        # always truthful (effective_limits mirrors the backend ladder).
+        self.effective_limits_label = QLabel("")
+        self.effective_limits_label.setObjectName("Caption")
+        self.effective_limits_label.setWordWrap(True)
+        self.effective_limits_label.setStyleSheet(
+            f"color: {theme_manager.palette.text_secondary}; font-size: 11px; "
+            f"padding: 4px 8px; background: {rgba(theme_manager.palette.info, 0.07)}; "
+            f"border-radius: 4px;"
+        )
+        self.effective_limits_label.setToolTip(
+            "What the conversion will ACTUALLY use, computed the same way the\n"
+            "backend clamps your request at start (VRAM ladder, the 32,768\n"
+            "context floor, and the output caps by model class). A known model\n"
+            "can raise the context further at start time (the model registry)."
+        )
+        params_lay.addWidget(self.effective_limits_label)
 
         host_lay.addWidget(params_box)
         host_lay.addStretch()
@@ -430,6 +480,18 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
         self._models_worker = None
         self._refresh_models()
         self._on_arch_change()
+
+        # V0.7.3 (rework ⑤, D12): the computed line's live wiring — every
+        # input that feeds the clamp mirror (spins, model picks, backend /
+        # arch switches) refreshes it. Auto is ON at open (the plan's
+        # default), so the spins immediately show the effective values.
+        self.heavy_ctx_spin.valueChanged.connect(lambda _v: self._update_limits_line())
+        self.heavy_out_spin.valueChanged.connect(lambda _v: self._update_limits_line())
+        self.summ_combo.currentIndexChanged.connect(lambda _i: self._update_limits_line())
+        self.cloud_model_edit.textChanged.connect(lambda _t: self._update_limits_line())
+        if hasattr(self, "llamacpp_model_edit"):
+            self.llamacpp_model_edit.textChanged.connect(lambda _t: self._update_limits_line())
+        self._on_limits_auto_toggled(self.limits_auto_cb.isChecked())
 
     def _get_models(self) -> list[str]:
         """Get available models from the current provider (Ollama/LM Studio).
@@ -574,6 +636,62 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
         if saved:
             combo.addItem(saved, saved)
             combo.setCurrentIndex(1)
+
+    # ── V0.7.3 (rework ⑤, D12): the limits' single-owner machinery ──────
+
+    def showEvent(self, event) -> None:  # noqa: N802 (Qt naming)
+        """The compact-summaries flag (Step 4's REFERENCE card) can change
+        while this step is alive — refresh the computed line on re-entry
+        (the V0.7.1 step3_ocr showEvent pattern)."""
+        super().showEvent(event)
+        try:
+            self._update_limits_line()
+        except Exception:
+            logger.debug("limits-line refresh skipped", exc_info=True)
+
+    def _current_model_name(self) -> str:
+        """The model name that feeds the clamp mirror, from whichever
+        control is live for the current arch/backend."""
+        arch = self.arch_combo.currentData() or "local"
+        if arch == "cloud":
+            return self.cloud_model_edit.text().strip()
+        backend = self.backend_combo.currentData() if hasattr(self, "backend_combo") else "ollama"
+        if backend == "llamacpp" and hasattr(self, "llamacpp_model_edit"):
+            return self.llamacpp_model_edit.text().strip()
+        return str(self.summ_combo.currentData() or "")
+
+    def _on_limits_auto_toggled(self, checked: bool) -> None:
+        """Auto (default): the spins are disabled and carry the computed
+        effective values (save still reads the spins — the V0.04 contract
+        stays intact). Manual: the spins are enabled; the computed line
+        keeps telling the truth about what the clamps will do."""
+        self.heavy_ctx_spin.setEnabled(not checked)
+        self.heavy_out_spin.setEnabled(not checked)
+        self._update_limits_line()
+
+    def _update_limits_line(self) -> None:
+        """The computed-honesty line (D12) — renders the effective values
+        from the shared mirror (core.summarisation.effective_limits, the
+        same ladder the Summarizer applies at construction). With Auto on,
+        the spins themselves are set to the effective values (idempotent:
+        effective(effective(x)) == effective(x))."""
+        from core.summarisation.effective_limits import (
+            effective_limits,
+            format_effective_limits,
+        )
+
+        ctx_v, out_v = effective_limits(
+            requested_ctx=int(self.heavy_ctx_spin.value()),
+            requested_out=int(self.heavy_out_spin.value()),
+            model_name=self._current_model_name(),
+            compact_summaries=bool(getattr(self.state, "compact_summaries", False)),
+        )
+        self.effective_limits_label.setText(format_effective_limits(ctx_v, out_v))
+        if self.limits_auto_cb.isChecked():
+            if int(self.heavy_ctx_spin.value()) != ctx_v:
+                self.heavy_ctx_spin.setValue(ctx_v)
+            if int(self.heavy_out_spin.value()) != out_v:
+                self.heavy_out_spin.setValue(out_v)
 
     def _on_models_failed(self, _err: str) -> None:
         """W-b11: fetch failed — fail-soft (W-b18 class: never leave the

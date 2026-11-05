@@ -295,7 +295,11 @@ class WizardView(QDialog):
             _model = s.get_setting("summarisation.model", "")
             _ocr = s.get_setting("ocr.primary_model", "")
             _source = s.get_setting("source_type", "normal_book")
-            _cov = s.get_setting("summarisation.coverage_threshold", 50)
+            # V0.7.3 (wizard rework ⑤, audit §5): coverage 85 everywhere —
+            # the load default matches the state (85) and the request
+            # (0.85). The old 50 here re-introduced the disagreement the
+            # audit's defaults table flags.
+            _cov = s.get_setting("summarisation.coverage_threshold", 85)
             # V0.7.0 (rework ②, D3): the OCR mode round-trips — the wizard
             # opens on the mode the user last chose (ocr.mode setting),
             # exactly like every other persisted wizard choice.

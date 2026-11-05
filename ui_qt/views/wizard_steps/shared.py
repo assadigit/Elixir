@@ -134,9 +134,13 @@ class WizardState:
     resume_enabled: bool = True  # V7.7.0: skip chapters with valid summaries on disk
     post_completion_action: str = "none"  # V8.1.0: "none"/"quit"/"sleep"/"hibernate"/"shutdown"
     enable_content_filter: bool = True
-    # Step 7b: Fine-tuning — Summarization limits (4)
+    # Step 7b: Fine-tuning — Summarization limits (4) — V0.7.3 (rework ⑤,
+    # audit §5): ONE default per field. Step 5 is the single owner of these
+    # two fields; the seeds below match the settings layer exactly
+    # (32768 / 16000 — what every layer now carries, and what Auto computes
+    # from at wizard open).
     max_context_tokens: int = 32768  # V13.34.0: 32k local
-    max_output_tokens: int = 8192  # V13.34.0
+    max_output_tokens: int = 16000  # V0.7.3: 8192 → 16000 (matches settings)
     cache_enabled: bool = False
     # Step 7b: Fine-tuning — Advanced doc handling (2)
     extract_math: bool = False

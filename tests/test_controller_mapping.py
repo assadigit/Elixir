@@ -138,14 +138,17 @@ class _StubController:
             "summarisation_max_context_tokens",
             "summarisation_max_context_tokens",
             "summarisation.max_context_tokens",
-            16000,
+            # V0.7.3 (wizard rework ⑤, audit §5): unified default — mirrors
+            # the real controller's table (was 16000 in both places).
+            32768,
             None,
         ),
         (
             "summarisation_max_output_tokens",
             "summarisation_max_output_tokens",
             "summarisation.max_output_tokens",
-            4096,
+            # V0.7.3: unified default — 16000 everywhere (was 4096).
+            16000,
             None,
         ),
         (
@@ -239,7 +242,9 @@ class _StubController:
         cov = (
             ui_data.get(
                 "coverage_threshold",
-                self.get_setting("summarisation.coverage_threshold", 50),
+                # V0.7.3 (wizard rework ⑤, audit §5): 85 everywhere —
+                # mirrors the real controller (was 50).
+                self.get_setting("summarisation.coverage_threshold", 85),
             )
             / 100.0
         )
@@ -329,9 +334,12 @@ class TestSummarisationMapping:
         assert req.coverage_threshold == 0.70
 
     def test_coverage_threshold_default(self, controller):
-        """Default coverage_threshold (when ui_data omits it) is 50 → 0.5."""
+        """Default coverage_threshold (when ui_data omits it) is 85 → 0.85.
+
+        V0.7.3 (wizard rework ⑤, audit §5): the unified default — state 85,
+        settings 85, request 0.85 (was 50 → 0.50, the audit's disagreement)."""
         req = controller.build_request_from_ui(_minimal_ui_data())
-        assert req.coverage_threshold == 0.50
+        assert req.coverage_threshold == 0.85
 
     def test_max_workers_mapped(self, controller):
         req = controller.build_request_from_ui(_minimal_ui_data(max_workers=3))

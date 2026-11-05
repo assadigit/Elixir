@@ -239,9 +239,24 @@ class LlamaCppConfigMixin:
 
         Only the "untouched" values are aligned: if the user has already
         customised a field for this visit, their number survives.
+
+        V0.7.3 (wizard rework ⑤, D12): with Auto limits ON (the default),
+        the manual alignment is skipped — the computed effective line and
+        the disabled spins re-resolve from the clamp mirror instead.
         """
         try:
             backend = self.backend_combo.currentData() or "ollama"
+            if (
+                backend
+                and getattr(self, "limits_auto_cb", None) is not None
+                and self.limits_auto_cb.isChecked()
+            ):
+                # Auto limits: recompute the effective values for the new
+                # backend's model, then re-list. No spin alignment.
+                if hasattr(self, "_update_limits_line"):
+                    self._update_limits_line()
+                self._refresh_models()
+                return
             if backend == "llamacpp":
                 _lc_ctx = int(
                     self.controller.get_setting("summarisation.llamacpp_context_tokens", 65536)

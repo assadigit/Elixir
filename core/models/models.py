@@ -284,9 +284,14 @@ class ConversionRequest:
     # (value unchanged: "gemma3:12b" — the LEGACY sentinel default).
     summarisation_model: str = LEGACY_DEFAULT_MODEL
     summarisation_max_context_tokens: int = (
-        131072  # V10.12.6: raised 16k → 64k (RTX 3060 12GB can handle 64k for 9B Q4)
+        # V0.7.3 (wizard rework ⑤, audit §5): one default per field — 32768
+        # everywhere (state / settings schema / this request default; was
+        # 131072 here). The VRAM ladder raises it per-machine at runtime.
+        32768
     )
-    summarisation_max_output_tokens: int = 4096  # increased default
+    # V0.7.3: 4096 → 16000 (matches the settings layer; the backend's
+    # model-class clamps cap small/low-bit models down to 8192 anyway).
+    summarisation_max_output_tokens: int = 16000
     summarisation_cache_enabled: bool = False
 
     # DOCX
@@ -321,7 +326,7 @@ class ConversionRequest:
     # and simplification_model below. ONE model (summarisation_model,
     # reached through the provider) does every LLM generation task; OCR /
     # transcribe / translation / TTS keep their own dedicated models.
-    coverage_threshold: float = 0.50  # lowered to 50%
+    coverage_threshold: float = 0.85  # V0.7.3 (rework ⑤, audit §5): 85 everywhere (was 0.50)
     # V15.1.0: Over-delivery — keep improving coverage past the minimum threshold
     overdeliver_enabled: bool = True  # default ON
     overdeliver_target: float = 1.0  # V15.1.1: 100% (the more the better)

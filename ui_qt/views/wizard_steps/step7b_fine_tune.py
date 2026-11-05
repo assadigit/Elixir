@@ -1,10 +1,16 @@
-"""Step 7b: Fine-tuning (17 settings in 4 collapsible groups) — Step7bFineTune (V18.20.4.6, P5 / O-b1 split).
+"""Step 7b: Fine-tuning — post-processing, DOCX, quality, advanced doc — Step7bFineTune (V18.20.4.6, P5 / O-b1 split).
 
 Moved VERBATIM from ui_qt/views/wizard_view.py (one module per
 wizard step): the class body below is byte-identical to the
 pre-split definition — only this module's top-of-file imports
 differ. ``ui_qt.views.wizard_view`` re-exports Step7bFineTune
 (back-compat facade).
+
+V0.7.3 (wizard rework ⑤, D12): the duplicate "Summarization limits"
+group is DELETED — Step 5 is the single owner of the model context /
+output limits (its save-order overwrite here silently beat Step 5's
+values at Start; audit §W12). The summary-cache checkbox relocated
+into Quality controls.
 """
 
 from __future__ import annotations
@@ -35,16 +41,18 @@ from ui_qt.views.wizard_steps.shared import WizardStep
 logger = logging.getLogger(__name__)
 
 # ════════════════════════════════════════════════════════════════════════════
-# Step 7b: Fine-tuning (17 settings in 4 collapsible groups)
+# Step 7b: Fine-tuning — post-processing, DOCX, quality, advanced doc
+# (V0.7.3, D12: the Summarization limits group moved to Step 5)
 # ════════════════════════════════════════════════════════════════════════════
 
 
 class Step7bFineTune(WizardStep):
-    """Fine-tuning: post-processing, DOCX, quality, summarization limits, advanced doc."""
+    """Fine-tuning: post-processing, DOCX, quality, advanced doc."""
 
     # V0.7.0 (item 2b): the numbered StepHeader grammar — the base
     # class inserts the badge+title+caption above the built content.
-    STEP_HEADER = (8, "Fine-tuning", "Quality, limits, and post-processing knobs.")
+    # V0.7.3 (D12): "limits" dropped from the caption — Step 5 owns them.
+    STEP_HEADER = (8, "Fine-tuning", "Quality, caching, and post-processing knobs.")
 
     def _build(self) -> None:
         lay = QVBoxLayout(self)
@@ -145,39 +153,21 @@ class Step7bFineTune(WizardStep):
         )
         q_lay.addWidget(self.resume_cb)
 
-        host_lay.addWidget(q_box)
-
-        # ── Summarization limits (4) ────────────────────────────────────
-        sum_box = QGroupBox("Summarization limits")
-        sum_lay = QVBoxLayout(sum_box)
-        sum_lay.setContentsMargins(10, 10, 10, 8)
-        sum_lay.setSpacing(5)
-        ctx_row = QHBoxLayout()
-        ctx_row.setSpacing(8)
-        self.ctx_spin = QSpinBox()
-        self.ctx_spin.setRange(1000, 128000)
-        self.ctx_spin.setSingleStep(1000)
-        self.ctx_spin.setValue(self.state.max_context_tokens)
-        ctx_row.addWidget(QLabel("Max context tokens:"))
-        ctx_row.addWidget(self.ctx_spin)
-        ctx_row.addStretch()
-        sum_lay.addLayout(ctx_row)
-        out_row = QHBoxLayout()
-        out_row.setSpacing(8)
-        self.out_spin = QSpinBox()
-        self.out_spin.setRange(256, 32768)
-        self.out_spin.setSingleStep(256)
-        self.out_spin.setValue(self.state.max_output_tokens)
-        out_row.addWidget(QLabel("Max output tokens:"))
-        out_row.addWidget(self.out_spin)
-        out_row.addStretch()
-        sum_lay.addLayout(out_row)
+        # V0.7.3 (wizard rework ⑤, D12): the cache checkbox moved here from
+        # the deleted "Summarization limits" group — Step 5 owns the context
+        # /output limits now (single owner; the old group's save-order
+        # overwrite, audit §W12, is gone). Summary caching is a re-run
+        # behavior, so it lives beside Resume mode.
         self.cache_cb = QCheckBox("Cache summaries to disk (faster re-runs)")
         self.cache_cb.setChecked(self.state.cache_enabled)
-        sum_lay.addWidget(self.cache_cb)
-        # V0.6.14 (single-model order): the simplification-model picker is
-        # retired — THE model simplifies the keypoints.
-        host_lay.addWidget(sum_box)
+        self.cache_cb.setToolTip(
+            "Store each chapter's summaries on disk. Re-runs skip chapters "
+            "whose cached summaries are still fresh — combined with Resume "
+            "mode, a re-run only pays for the chapters that changed."
+        )
+        q_lay.addWidget(self.cache_cb)
+
+        host_lay.addWidget(q_box)
 
         # ── Advanced doc handling (2) ───────────────────────────────────
         adv_box = QGroupBox("Advanced document handling")
@@ -322,8 +312,11 @@ class Step7bFineTune(WizardStep):
         self.state.coverage_threshold = self.coverage_spin.value()
         self.state.resume_enabled = self.resume_cb.isChecked()
         self.state.enable_content_filter = self.filter_cb.isChecked()
-        self.state.max_context_tokens = self.ctx_spin.value()
-        self.state.max_output_tokens = self.out_spin.value()
+        # V0.7.3 (wizard rework ⑤, D12): max_context_tokens / max_output
+        # tokens are NO LONGER written here — Step 5 is the single owner
+        # (this used to overwrite Step 5's values by save order at Start;
+        # audit §W12). Only the cache flag (relocated into Quality
+        # controls) still rounds through this step.
         self.state.cache_enabled = self.cache_cb.isChecked()
         self.state.extract_math = self.math_cb.isChecked()
         self.state.layout_analysis = self.layout_cb.isChecked()

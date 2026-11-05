@@ -702,10 +702,15 @@ class TestWizardStateFlow:
         assert 's.get_setting("summarisation.max_output_tokens", 16000)' in src
 
     def test_step7b_spinboxes_cover_new_numbers(self):
-        """Step 7b's ctx/out spins (the fine-tune surface) accept 65k/12k."""
-        src = _strip_comments(_src("ui_qt/views/wizard_steps/step7b_fine_tune.py"))
-        assert "setRange(1000, 128000)" in src  # 65536 ✓
-        assert "setRange(256, 32768)" in src  # 12288 ✓
+        """V0.7.3 (wizard rework ⑤, D12): Step 7b's ctx/out spins are
+        DELETED (Step 5 is the single owner of the limits). Step 5's spins
+        cover the same numbers — 1024–262144 ctx, 256–65536 out."""
+        src7b = _strip_comments(_src("ui_qt/views/wizard_steps/step7b_fine_tune.py"))
+        assert "self.ctx_spin" not in src7b, "Step 7b must not carry a ctx spin (D12)"
+        assert "self.out_spin" not in src7b, "Step 7b must not carry an out spin (D12)"
+        src5 = _strip_comments(_src("ui_qt/views/wizard_steps/step5_models.py"))
+        assert "setRange(1024, 262144)" in src5  # 65536 ✓ (and up to 262144)
+        assert "setRange(256, 65536)" in src5  # 12288 ✓ (and up to 65536)
 
 
 # ═══════════════════════════════════════════════════════════════════════════

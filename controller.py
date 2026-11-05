@@ -797,14 +797,19 @@ class Controller:
             "summarisation_max_context_tokens",
             "summarisation_max_context_tokens",
             "summarisation.max_context_tokens",
-            16000,
+            # V0.7.3 (wizard rework ⑤, audit §5): one default per field —
+            # 32768 everywhere (state / settings schema / request).
+            32768,
             None,
         ),
         (
             "summarisation_max_output_tokens",
             "summarisation_max_output_tokens",
             "summarisation.max_output_tokens",
-            4096,
+            # V0.7.3: 4096 → 16000 (matches the settings layer's schema
+            # and migration; the backend's class clamps protect small
+            # models from the larger seed).
+            16000,
             None,
         ),
         (
@@ -924,10 +929,12 @@ class Controller:
             strat = strat.value
 
         # ── Special: coverage_threshold (/100.0 transform) ─────────────
+        # V0.7.3 (wizard rework ⑤, audit §5): coverage 85 everywhere —
+        # state 85 / settings 85 / request 0.85 (was 50 → 0.50 here).
         cov = (
             ui_data.get(
                 "coverage_threshold",
-                self.get_setting("summarisation.coverage_threshold", 50),
+                self.get_setting("summarisation.coverage_threshold", 85),
             )
             / 100.0
         )
