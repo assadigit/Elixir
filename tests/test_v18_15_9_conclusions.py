@@ -303,8 +303,11 @@ class TestV18_15_9_1UIFixes:
         # not a fixed 500-char window — the block grew past 500 chars
         # (the M2 visual-fidelity passes added padding/font lines and the
         # multi-line focus-rectangle comment), pushing the outline rule
-        # outside the window while remaining present and in-force.
-        _primary_idx = _src.find("QPushButton#Primary")
+        # outside the window while remaining present and in-force. The
+        # stylesheet lives in an f-string, so the block's real delimiter
+        # is the ESCAPED close '}}' (a bare '}' find would stop at the
+        # '{{' open or an interpolation like '{p.accent}').
+        _primary_idx = _src.find("QPushButton#Primary {{")
         assert _primary_idx >= 0, "QPushButton#Primary block not found"
-        _block = _src[_primary_idx : _src.find("}", _primary_idx)]
+        _block = _src[_primary_idx : _src.find("}}", _primary_idx)]
         assert "outline: none" in _block, "outline: none not in Primary button block"
