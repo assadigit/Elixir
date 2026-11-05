@@ -92,6 +92,34 @@ def expand_with_overlap(valid_pages: set[int], total_pages: int) -> set[int]:
     return valid_pages | overlap_pages
 
 
+# V0.7.0 (wizard rework ②, D3): the valid 3-mode vocabulary.
+OCR_MODES = ("digital", "scanned", "auto")
+
+
+def resolve_ocr_mode(request: Any) -> str:
+    """Resolve the request's effective OCR mode (V0.7.0, D3).
+
+    Resolution order:
+      1. ``request.ocr_mode`` ∈ {digital, scanned, auto} — the new switch
+         (an unknown/empty value degrades to "auto" with a WARNING by the
+         caller-side contract; this pure helper just normalises).
+      2. DEPRECATED ALIAS (one release): ``force_ocr_all_pages=True`` maps
+         to ``"scanned"`` for ANY source type — this is the B2 fix. The
+         old academic-only gate (``source_type == "academic_paper"`` AND
+         the flag) honoured the flag for no other source type, so the
+         Full-OCR / Infographics presets were silent no-ops on digital
+         PDFs (audit §3 B2, extraction.py:472-490).
+
+    Pure function on the request — unit-testable without a converter.
+    """
+    mode = str(getattr(request, "ocr_mode", "auto") or "auto").strip().lower()
+    if mode not in OCR_MODES:
+        mode = "auto"
+    if mode == "auto" and getattr(request, "force_ocr_all_pages", False):
+        mode = "scanned"
+    return mode
+
+
 class ConverterExtractionMixin:
     """V0.18 (Phase 5.3): extraction-phase helper methods of the Converter.
 
@@ -141,6 +169,13 @@ def run_extraction(converter: Any) -> ExtractionResult | ConversionResult:
     update_status = converter._update_status
     update_progress = converter._update_progress
     request = converter.request
+
+    # V0.7.0 (wizard rework ②, D3): resolve the effective OCR mode FIRST —
+    # every detection/branch below (the scanned-PDF auto-switch, docling,
+    # the 3-mode branch) reads this one canonical local. The normalised
+    # value is written back onto the request before OCRService is built so
+    # downstream consumers (the D2 engine set) see the same attribute.
+    _ocr_mode = resolve_ocr_mode(request)
 
     # V10.22.1: Multi-format input — detect non-PDF files and route accordingly
     _input_suffix = Path(request.input_path).suffix.lower()
@@ -212,12 +247,14 @@ def run_extraction(converter: Any) -> ExtractionResult | ConversionResult:
     except Exception as _e:
         logger.debug("ignored %s: %s", type(_e).__name__, _e)
 
-    # V10.22.1: Docling — if available + academic, use for extraction
+    # V10.22.1: Docling — if available + academic, use for extraction.
+    # V0.7.0 (D3): only in modes that still want a text layer first —
+    # scanned mode sends every page through the vision-OCR engine set.
     _use_docling = False
     try:
         import docling  # noqa: F401
 
-        if request.source_type == "academic_paper" and not request.force_ocr_all_pages:
+        if request.source_type == "academic_paper" and _ocr_mode != "scanned":
             _use_docling = True
             log(
                 "  🔧 Docling available — using for technical PDF extraction (tables + code).",
@@ -267,10 +304,13 @@ def run_extraction(converter: Any) -> ExtractionResult | ConversionResult:
     # extraction (when raw_markdown is available) but the early scan
     # check here catches the scanned-PDF case before OCR.  The full
     # detection runs later (after Step 4) when we have text.
+    # V0.7.0 (D3): the auto-switch is an auto-DETECTION — digital mode
+    # (the user's explicit "trust the text layer" choice) turns it off;
+    # scanned/auto keep today's behavior.
     try:
         from core.llm.content_presets import detect_scanned_pdf
 
-        if detect_scanned_pdf(len(pages_to_ocr), analysis.total_pages):
+        if _ocr_mode != "digital" and detect_scanned_pdf(len(pages_to_ocr), analysis.total_pages):
             log(
                 f"  📋 Auto-detected scanned PDF ({len(pages_to_ocr)}/"
                 f"{analysis.total_pages} pages scanned) — switching to "
@@ -426,11 +466,13 @@ def run_extraction(converter: Any) -> ExtractionResult | ConversionResult:
     # V10.21.0: Docling integration — if docling is available and the
     # source is technical/academic, use it for text extraction (preserves
     # tables + code blocks that markitdown mangles).
+    # V0.7.0 (D3): only in modes that still want a text layer first —
+    # scanned mode sends every page through the vision-OCR engine set.
     _docling_used = False
     try:
         import docling  # noqa: F401
 
-        if request.source_type in ("academic_paper",) and not request.force_ocr_all_pages:
+        if request.source_type in ("academic_paper",) and _ocr_mode != "scanned":
             log("  🔧 Docling available — will use for technical PDF extraction.", "INFO")
             _docling_used = True
             # When docling is available, don't force OlmOCR — let docling
@@ -457,27 +499,34 @@ def run_extraction(converter: Any) -> ExtractionResult | ConversionResult:
     # will detect garbled text and call _targeted_ocr_repair on just
     # those pages.
     #
-    # The ONLY case where we still force OlmOCR on all pages is when
-    # force_ocr_all_pages is explicitly True (user override).
-    if getattr(request, "source_type", "") == "academic_paper" and not getattr(
-        request, "force_ocr_all_pages", False
-    ):
+    # V0.7.0 (wizard rework ②, D3): the ocr_mode branch — SUPERSEDES the
+    # academic-only force_ocr_all_pages gate (B2). Resolution via
+    # resolve_ocr_mode() above; the normalised value is written back onto
+    # the request so downstream consumers (OCRService's D2 engine set)
+    # read one canonical attribute:
+    #   scanned → mark ALL pages for OCR, recommendation LLM_OCR, engine
+    #             set per D2 (vision-capable summarisation model →
+    #             primary_ocr_model → OlmOCR → Qwen VL; Tesseract, Paddle,
+    #             and the local-VLM fallback EXCLUDED) — for ANY source
+    #             type (the B2 fix; the old gate required academic_paper).
+    #   digital → page-level scan detection OFF, figure/table extraction ON
+    #             (the Digital card's promise).
+    #   auto    → exactly today's behavior (incl. the academic two-stage
+    #             log line below).
+    request.ocr_mode = _ocr_mode
+    if _ocr_mode == "scanned":
+        if getattr(request, "force_ocr_all_pages", False):
+            log(
+                "  📑 force_ocr_all_pages is deprecated — mapped to ocr_mode='scanned' "
+                "(V0.7.0; the flag is purged next release).",
+                "INFO",
+            )
         log(
-            "  🔬 Academic paper detected — using two-stage OCR: "
-            "markitdown first, OlmOCR only on garbled pages. "
-            "(V10.14.0: was forcing OlmOCR on ALL pages — 5-10x slower).",
+            "  📑 Scanned mode — every page goes through the vision-OCR "
+            "engine set (D2: vision model → primary OCR model → OlmOCR → "
+            "Qwen VL; Tesseract/Paddle/local-VLM excluded).",
             "INFO",
         )
-        # Don't force all pages as scanned — let markitdown try first.
-        # The postprocess phase's targeted OCR repair will catch garbled pages.
-    elif getattr(request, "source_type", "") == "academic_paper" and getattr(
-        request, "force_ocr_all_pages", False
-    ):
-        log(
-            "  🔬 Academic paper + Force OCR All Pages — forcing OlmOCR on ALL pages.",
-            "INFO",
-        )
-        # Mark all pages as scanned so OCRService uses OlmOCR
         _all_pages = list(range(1, analysis.total_pages + 1))
         if valid_pages:
             _all_pages = sorted(valid_pages)
@@ -488,6 +537,37 @@ def run_extraction(converter: Any) -> ExtractionResult | ConversionResult:
             p.is_scanned = True
             p.recommended_action = "llm_ocr"
         pages_to_ocr = set(_all_pages)
+    elif _ocr_mode == "digital":
+        log(
+            "  📄 Digital mode — page-level scan detection OFF; text-layer extraction only.",
+            "INFO",
+        )
+        pages_to_ocr = set()
+        analysis.scanned_pages = []
+        analysis.text_pages = list(range(1, analysis.total_pages + 1))
+        analysis.recommendation = PdfRecommendation.NO_OCR
+        for p in analysis.per_page:
+            p.is_scanned = False
+            p.recommended_action = "skip"
+        # The Digital card's promise: charts/tables on text pages are
+        # EXTRACTED (figure-text vision pass + camelot/tabula), not
+        # re-OCR'd (audit §W2 — both real, page-level-blind, opt-in today).
+        if not request.extract_figure_text or not request.extract_tables:
+            request.extract_figure_text = True
+            request.extract_tables = True
+            log(
+                "  📊 Digital mode: figure-text + table extraction enabled.",
+                "INFO",
+            )
+    elif getattr(request, "source_type", "") == "academic_paper":
+        log(
+            "  🔬 Academic paper detected — using two-stage OCR: "
+            "markitdown first, OlmOCR only on garbled pages. "
+            "(V10.14.0: was forcing OlmOCR on ALL pages — 5-10x slower).",
+            "INFO",
+        )
+        # Don't force all pages as scanned — let markitdown try first.
+        # The postprocess phase's targeted OCR repair will catch garbled pages.
 
     ocr_service = OCRService(
         request,

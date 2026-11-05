@@ -196,6 +196,10 @@ class Settings:
                 "fallback_model": "OlmOCR-2-7B-1025-Q4_K_L-bartowski-allenai:latest",
                 "vlm_fallback_model": "",  # V10.35.0: local VLM for OCR fallback (e.g. "llava:13b")
                 "use_llm": True,
+                # V0.7.0 (wizard rework ②, D3): the 3-mode OCR switch
+                # (digital / scanned / auto) — the request twin is
+                # ConversionRequest.ocr_mode.
+                "mode": "auto",
                 "auto_detect_scanned": True,
                 "force_ocr_all_pages": False,
                 "image_max_size": 1200,

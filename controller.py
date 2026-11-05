@@ -697,6 +697,10 @@ class Controller:
         ("conservative_drops", "conservative_drops", None, False, None),
         # ── Settings-backed fields (ui_key, setting_path, default) ────
         ("use_llm_ocr", "use_llm_ocr", "ocr.use_llm", True, None),
+        # V0.7.0 (wizard rework ②, D3): the 3-mode OCR switch round-trips
+        # through the map like every other request field (digital/scanned/
+        # auto; supersedes the academic-only force_ocr_all_pages gate, B2).
+        ("ocr_mode", "ocr_mode", "ocr.mode", "auto", None),
         # V18.20.4.3 (P2 / W-c1): fallback defaults unified with the
         # canonical ``utils/settings.py`` defaults + USER_OLLAMA_MODELS.md
         # (these fire only when the settings file lacks the key — the old

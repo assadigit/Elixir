@@ -151,6 +151,27 @@ class OCRService:
         self._use_paddleocr = settings.get("ocr.use_paddleocr", False)
         self._paddle_ocr = None  # lazy‑initialised
 
+        # V0.7.0 (wizard rework ②, D2): the scanned-mode engine set. In
+        # scanned mode every page goes through the dedicated vision-OCR
+        # cascade — vision-capable summarisation model → primary_ocr_model
+        # → OlmOCR → Qwen VL — and Tesseract, PaddleOCR, and the local-VLM
+        # fallback are EXCLUDED (never constructed, never called). The
+        # request's ocr_mode is normalised in place by extraction's
+        # resolve_ocr_mode BEFORE this service is built, so reading it
+        # here is the one canonical check.
+        self._scanned_mode = (
+            str(getattr(request, "ocr_mode", "auto") or "auto").strip().lower() == "scanned"
+        )
+        if self._scanned_mode:
+            if self._use_paddleocr:
+                self.log(
+                    "  📑 Scanned mode (D2): PaddleOCR excluded from the "
+                    "engine set — vision-OCR cascade only.",
+                    "INFO",
+                )
+            self._use_paddleocr = False
+            self._paddle_ocr = None
+
         # V18.2.15 (P6): OCR page-processing parallelism. The OCR model is
         # loaded ONCE (acquire_model below), scans all needed pages, then
         # unloaded (release_model in finally block). This setting controls
@@ -771,23 +792,71 @@ class OCRService:
         # (via a live API probe) and routes to whichever provider (Ollama or
         # llama.cpp) the vision model is on. If no vision model is found,
         # falls through to the existing Ollama-only Qwen path → Tesseract.
-        if self.request.use_llm_ocr:
+        # V0.7.0 (D2): in scanned mode the vision cascade is THE engine set
+        # — the user chose full vision OCR, so it runs even if use_llm_ocr
+        # is off, and the Tesseract/Paddle/VLM fallbacks below are skipped.
+        if self.request.use_llm_ocr or self._scanned_mode:
             result = self._provider_vision_ocr(image_bytes, page_num)
             if result.success:
                 return result
 
         # ── Try Qwen if loaded (legacy Ollama-only path) ───────────────
-        if qwen_loaded and self.request.use_llm_ocr:
+        # V0.7.0 (D2): scanned mode forces the vision/Qwen path on too.
+        if qwen_loaded and (self.request.use_llm_ocr or self._scanned_mode):
             result = self._qwen_ocr_single(image_bytes, page_num, attempt=1)
             if result.success:
                 return result
 
             # ── If Qwen fails, try PaddleOCR (if enabled) ─────────────────
+            # (V0.7.0 D2: _use_paddleocr is forced off in scanned mode, so
+            # this is already a no-op there — the belt to __init__'s braces.)
             if self._use_paddleocr and self._paddle_ocr is not None:
                 result_paddle = self._paddle_ocr_single(image_bytes, page_num)
                 if result_paddle.success:
                     self.log(f"    ✅ PaddleOCR recovered p.{page_num}", "INFO")
                     return result_paddle
+
+            # V0.7.0 (D2): scanned mode never degrades to the local-VLM
+            # fallback or Tesseract — the vision cascade (probe → Qwen/
+            # OlmOCR) is the whole engine set; a failure is honest.
+            if self._scanned_mode:
+                self.log(
+                    f"    ⚠️ p.{page_num}: scanned mode — vision-OCR engines "
+                    f"returned no text (D2 excludes Tesseract/Paddle/VLM "
+                    f"fallbacks); page failed.",
+                    "WARNING",
+                )
+                return OcrResult(
+                    page_num=page_num,
+                    text="",
+                    success=False,
+                    engine_used=OcrEngine.NONE,
+                    error_msg=(
+                        f"Page {page_num}: scanned mode vision-OCR engines returned no text"
+                    ),
+                )
+
+            # V0.7.0 (D2): scanned mode never degrades to the local-VLM
+            # fallback or Tesseract — the vision cascade (probe → Qwen/
+            # OlmOCR) is the whole engine set; a failure is honest.
+            # (_use_paddleocr is forced off in scanned mode in __init__,
+            # so the PaddleOCR block above is already a no-op there.)
+            if self._scanned_mode:
+                self.log(
+                    f"    ⚠️ p.{page_num}: scanned mode — vision-OCR engines "
+                    f"returned no text (D2 excludes Tesseract/Paddle/VLM "
+                    f"fallbacks); page failed.",
+                    "WARNING",
+                )
+                return OcrResult(
+                    page_num=page_num,
+                    text="",
+                    success=False,
+                    engine_used=OcrEngine.NONE,
+                    error_msg=(
+                        f"Page {page_num}: scanned mode vision-OCR engines returned no text"
+                    ),
+                )
 
             # V10.35.0 (Sprint 7): Local VLM fallback before Tesseract.
             # When OlmOCR/Qwen returns <50 chars, use a capable local VLM
@@ -835,6 +904,25 @@ class OCRService:
             if result_paddle.success:
                 return result_paddle
 
+        # V0.7.0 (D2): scanned mode with no loaded vision model is an
+        # honest failure — never a quiet Paddle/Tesseract downgrade.
+        if self._scanned_mode:
+            self.log(
+                f"    ⚠️ p.{page_num}: scanned mode found no available "
+                f"vision-OCR engine (D2 excludes Tesseract/Paddle/VLM) — "
+                f"page failed honestly.",
+                "WARNING",
+            )
+            return OcrResult(
+                page_num=page_num,
+                text="",
+                success=False,
+                engine_used=OcrEngine.NONE,
+                error_msg=(
+                    "Scanned mode: no vision-OCR engine available "
+                    "(check the vision/OCR model setup)"
+                ),
+            )
         result = self._tesseract_ocr(image_bytes, page_num)
         if not result.success:
             result.text = f"[Page {page_num}: all OCR methods failed]"

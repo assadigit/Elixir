@@ -30,6 +30,10 @@ class WizardState:
     # Step 1: PDF
     input_path: str = ""
     source_type: str = "normal_book"
+    # V0.7.0 (wizard rework ②, D3): the 3-mode OCR switch — digital /
+    # scanned / auto. Step 1's mode cards set it; the request map carries
+    # it (ocr.mode setting twin). Default "auto" = today's behaviour.
+    ocr_mode: str = "auto"
     # Step 2: Range
     page_range_start: int | None = None
     page_range_end: int | None = None
@@ -147,7 +151,7 @@ class WizardState:
             "input_path": self.input_path,
             "output_dir": self.output_dir or str(Path(self.input_path).parent),
             "source_type": self.source_type,
-            "is_academic": self.source_type == "academic_paper",
+            "ocr_mode": self.ocr_mode,
             "page_range_start": self.page_range_start,
             "page_range_end": self.page_range_end,
             "selected_chapters": self.selected_chapters,

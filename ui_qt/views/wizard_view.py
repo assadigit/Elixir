@@ -290,6 +290,13 @@ class WizardView(QDialog):
             _ocr = s.get_setting("ocr.primary_model", "")
             _source = s.get_setting("source_type", "normal_book")
             _cov = s.get_setting("summarisation.coverage_threshold", 50)
+            # V0.7.0 (rework ②, D3): the OCR mode round-trips — the wizard
+            # opens on the mode the user last chose (ocr.mode setting),
+            # exactly like every other persisted wizard choice.
+            _ocr_mode = str(s.get_setting("ocr.mode", "auto") or "auto")
+            if _ocr_mode not in ("digital", "scanned", "auto"):
+                _ocr_mode = "auto"
+            self.state.ocr_mode = _ocr_mode
             # Apply to state (V0.6.14: fast_model / model_architecture retired)
             self.state.max_workers = int(_mw)
             self.state.temperature = float(_temp)
