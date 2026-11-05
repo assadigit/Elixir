@@ -375,14 +375,22 @@ class TestWb12MergeOffload:
 
     def test_finished_handler_reenables_and_keeps_identical_boxes(self):
         done = _strip_comments(_method(_APP, "ElixirWindow", "_on_merge_finished"))
-        assert "self.merge_btn.setEnabled(True)" in done
+        # V0.7.6 pin refresh: V0.6.77 (a597422, the floating-shell
+        # rewrite) made the re-enable defensive — the shell rebuild may
+        # build the window without merge_btn, so the handler now goes
+        # through a getattr guard instead of the direct attribute touch.
+        # Intent unchanged: the handler MUST re-enable the merge button
+        # when it exists and show the identical boxes.
+        assert 'btn = getattr(self, "merge_btn", None)' in done
+        assert "btn.setEnabled(True)" in done
         assert '"Merge complete"' in done
         assert '"Merge failed"' in done
         assert '"No summaries found to merge."' in done
         fail = _strip_comments(_method(_APP, "ElixirWindow", "_on_merge_failed"))
-        assert "self.merge_btn.setEnabled(True)" in fail, (
+        assert 'btn = getattr(self, "merge_btn", None)' in fail, (
             "W-b18 class: the failed handler must re-enable too"
         )
+        assert "btn.setEnabled(True)" in fail
         assert '"Merge error"' in fail
 
     def test_failure_logs_traceback_before_the_box(self):
