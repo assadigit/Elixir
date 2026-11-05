@@ -236,8 +236,7 @@ class Step8Review(WizardStep):
         # loop regenerates until MEASURED coverage reaches the level (±3,
         # max 3 rounds); the review says what the pipeline now does.
         lines.append(
-            f"  Coverage target: {s.coverage_threshold}% "
-            f"(regenerate to measured, ±3, max 3 rounds)"
+            f"  Coverage target: {s.coverage_threshold}% (regenerate to measured, ±3, max 3 rounds)"
         )
         lines.append(
             f"  Resume mode: {'yes — skip done chapters' if s.resume_enabled else 'no — reprocess all'}"

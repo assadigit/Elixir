@@ -93,6 +93,11 @@ _MOVED_TO_COVERAGE = (
     "_apply_3tier_coverage",
     "_extract_must_have_items",
     "_gap_fill_concepts",
+    # V0.7.5 (wizard rework ⑦, 7c / D11): the coverage close-the-loop
+    # delegate — added to this mixin (the house pattern; intent of this
+    # exact-set pin preserved: the VERBATIM-moved set stays complete, the
+    # new member is registered here in the same commit).
+    "_run_coverage_close_loop",
 )
 # V0.4.19 (de-monolithization step 9/10): the chunked-output + map-reduce
 # machinery moved VERBATIM to summarizer_chunking (SummarizerChunkingMixin).
