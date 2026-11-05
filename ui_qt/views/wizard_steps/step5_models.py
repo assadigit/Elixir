@@ -450,6 +450,14 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
         SimpleWorker; the combos are repopulated on the MAIN thread from
         _on_models_loaded. ``_get_models`` stays the worker fn (pure HTTP,
         no widget access).
+
+        V0.7.3 (wizard rework ⑤, B6): the dispatch is PER-BACKEND —
+        Ollama → /api/tags (the original worker), LM Studio → its OWN
+        base URL /v1/models (``list_lmstudio_models``; before this the
+        LM Studio URL was never used for discovery and the combo silently
+        listed Ollama's models), llama.cpp → the mixin's worker. The
+        backend AND the LM Studio URL are snapshotted on the MAIN thread
+        (combo/line-edit reads never cross to the worker).
         """
         worker = getattr(self, "_models_worker", None)
         try:
@@ -468,6 +476,16 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
         )
         if self._models_backend_snapshot == "llamacpp":
             worker_fn = self.llamacpp_fetch_models
+        elif self._models_backend_snapshot == "lmstudio":
+            # B6: the LM Studio server is asked on ITS OWN endpoint — the
+            # URL is read from the line edit HERE (main thread) and baked
+            # into the worker fn, so the worker never touches a widget.
+            from functools import partial
+
+            from utils.network import list_lmstudio_models
+
+            _lm_url = self.lmstudio_url_edit.text().strip() or "http://localhost:1234/v1"
+            worker_fn = partial(list_lmstudio_models, _lm_url)
         else:
             worker_fn = self._get_models
         self.refresh_btn.setEnabled(False)
@@ -481,13 +499,33 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
         self.refresh_btn.setEnabled(True)
         models = models or []
         if not models:
+            # V0.7.3 (wizard rework ⑤, B6): the hint names the server that
+            # was ACTUALLY asked — the old copy said "Ollama" even when
+            # the LM Studio or llama.cpp backend had just been probed.
+            _backend = getattr(self, "_models_backend_snapshot", "ollama") or "ollama"
+            _hints = {
+                "ollama": (
+                    "Ollama",
+                    "Make sure Ollama is running and has models pulled.\n\n"
+                    "To pull models:\n"
+                    "  ollama pull gemma4-12b:latest\n"
+                    "  ollama pull qwen3-vl:8b",
+                ),
+                "lmstudio": (
+                    "LM Studio",
+                    "Make sure LM Studio is running, its local server is started "
+                    "(Developer tab → Start Server), and a model is loaded.",
+                ),
+                "llamacpp": (
+                    "the llama.cpp server",
+                    "Make sure llama-server is running with a model loaded "
+                    "(--host 127.0.0.1 --port 8080).",
+                ),
+            }.get(_backend, ("the backend", "Make sure the server is running."))
             QMessageBox.information(
                 self,
                 "No models found",
-                "No Ollama models found. Make sure Ollama is running and has models pulled.\n\n"
-                "To pull models:\n"
-                "  ollama pull gemma4-12b:latest\n"
-                "  ollama pull qwen3-vl:8b",
+                f"No models found on {_hints[0]}.\n\n{_hints[1]}",
             )
             return
 

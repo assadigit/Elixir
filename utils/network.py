@@ -184,3 +184,23 @@ def list_ollama_models(base_url: str = "http://localhost:11434", timeout: int = 
         return [model["name"] for model in data.get("models", [])]
     except (ConnectionError, TimeoutError, OSError):
         return []
+
+
+def list_lmstudio_models(base_url: str = "http://localhost:1234/v1", timeout: int = 5) -> list:
+    """List LM Studio's loaded models via its OpenAI-compatible ``/v1/models``.
+
+    V0.7.3 (wizard rework ⑤, B6): Step 5's LM Studio backend lists from
+    ITS OWN server (this endpoint) — the audit found the LM Studio URL was
+    never used for discovery (``step5_models.py:413-427,452-458``: picking
+    "LM Studio" silently listed Ollama's models). Same never-raises shape
+    as ``list_ollama_models``: any failure returns ``[]`` (callers show
+    the backend-aware "no models" hint, not a traceback).
+    """
+    try:
+        resp = requests.get(f"{base_url.rstrip('/')}/models", timeout=timeout)
+        if resp.status_code != 200:
+            return []
+        data = resp.json().get("data", []) or []
+        return [m.get("id", "") for m in data if m.get("id")]
+    except Exception:
+        return []
