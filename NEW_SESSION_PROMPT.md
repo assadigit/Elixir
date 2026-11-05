@@ -259,16 +259,18 @@ enforces the no-colour-literals rule — use theme_manager.palette
 tokens everywhere.
 
 **THE LOOP (session mechanics).** Recover: `cd /home/z/elixir-repo`
-(clone with the session token if absent). `git log --oneline -5` —
-expect, on top, `7f86019` (a docs-only errata: the V0.7.3 lint claim
-in the release notes + CHANGELOG corrected to admit the grab-script
-ruff catch — the GitHub release body was patched to match), then
-`dabf167` (the fix itself: scripts/grab_v0730_step5.py shipped with an
-unused import + one format nit, caught by the post-release Rule-3
-gate — re-grab renders byte-identical), then `b64b167` (the Phase-7
-handoff docs commit — this file), then `2d24355` (the V0.7.3 release);
-tag `V0.7.3` pushed. Baseline per the
-venv + Qt notes above. Orient: read AGENTS.md, this prompt, the
+(clone with the session token if absent). `git log --oneline -6` —
+expect, in order from the top: a docs-only session touch-up (this
+file's Recover-expectation fix — possibly more than one if later
+docs commits landed), then `7f86019` (a docs-only errata: the V0.7.3
+lint claim in the release notes + CHANGELOG corrected to admit the
+grab-script ruff catch — the GitHub release body was patched to
+match), then `dabf167` (the fix itself: scripts/grab_v0730_step5.py
+shipped with an unused import + one format nit, caught by the
+post-release Rule-3 gate — re-grab renders byte-identical), then
+`b64b167` (the Phase-7 handoff docs commit — this file's main body),
+then `2d24355` (the V0.7.3 release); tag `V0.7.3` pushed. Baseline
+per the venv + Qt notes above. Orient: read AGENTS.md, this prompt, the
 Round-2 plan (all of §0-§2, especially Phase ⑥), the audit's §W10
 section (the translation step) + §3 bug B7 + the dead-code register
 (two translation keys). Skim step6_translation.py (the master
