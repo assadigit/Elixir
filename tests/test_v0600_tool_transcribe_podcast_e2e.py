@@ -986,7 +986,24 @@ class TestDoTranscribeEndToEnd:
         )
 
     def test_summary_error_is_nonfatal_when_raw_saved(self, tmp_path, monkeypatch):
-        self._stub_seam(monkeypatch, summarize_ret="Error: LLM returned empty response.")
+        # V0.7.6 pin refresh: since V0.6.55 (d058706) the LLM step RAISES
+        # the structured TranscribeError family on failure (it no longer
+        # returns an 'Error: …' string — any returned string is a real
+        # summary and IS saved). The stub now mirrors the real contract:
+        # summarize_transcript raises LLMEmptyResponseError, and the
+        # non-fatal path must keep the raw transcript, skip the summary
+        # file, and surface the structured error.
+        from core.transcribe.errors import LLMEmptyResponseError
+
+        def _raise_summarize(*a, **k):
+            raise LLMEmptyResponseError(
+                "The LLM returned an empty response for the transcript summary."
+            )
+
+        self._stub_seam(monkeypatch)  # transcribe side (stub returns clean audio result)
+        import core.transcribe.transcribe_service as _ts
+
+        monkeypatch.setattr(_ts, "summarize_transcript", _raise_summarize)
         self._install_settings_for_dialog()
         dlg, app = self._make_dialog()
         src = _build_wav(tmp_path)
@@ -1001,7 +1018,7 @@ class TestDoTranscribeEndToEnd:
         }
         results = dlg._do_transcribe(opts)
         assert results["raw_path"] and results["summary_path"] is None
-        assert results["error"] == "Error: LLM returned empty response."
+        assert "empty response" in results["error"]
         assert (tmp_path / "o2" / "sample_transcript.md").exists()
         assert not (tmp_path / "o2" / "sample_summary.md").exists()
         app.processEvents()
@@ -1054,6 +1071,7 @@ class TestDoTranscribeEndToEnd:
         opts = {
             "filepath": str(mp4),
             "output_folder": str(out_dir),
+            "engine": "faster_whisper",  # V0.7.6 pin refresh: explicit — the default engine is transcribe_cpp since V0.6.42 (the same V0.6.55/V0.6.62 lesson; this site was missed)
             "whisper_model": "tiny",
             "llm_model": "model-a",
             "save_raw": True,
@@ -1172,6 +1190,14 @@ class TestTranscribeDialogDrive:
         dlg = tmod.TranscribeServiceDialog(_StubController())
         dlg.file_edit.setText(str(_build_wav(tmp_path)))
         dlg.out_edit.setText(str(tmp_path / "drive_out"))
+        # V0.7.6 pin refresh: select faster-whisper before driving — the
+        # combo's default engine is transcribe_cpp since V0.6.42, whose
+        # exe-path check fails on a source rig (the same V0.6.55/V0.6.62
+        # explicit-engine lesson; the drive path can't pass opts so the
+        # combo selection is the seam).
+        idx = dlg.engine_combo.findData("faster_whisper")
+        assert idx >= 0, "faster-whisper must be selectable in the engine combo"
+        dlg.engine_combo.setCurrentIndex(idx)
         dlg._on_process()
         return dlg, app, rec
 
