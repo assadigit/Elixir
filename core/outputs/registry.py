@@ -582,6 +582,85 @@ def selected_output_names(source: object) -> list[str]:
     return names
 
 
+# ── V0.7.4 (wizard rework ⑥, D15): the Step-4 selection → translation
+# outputs mapping — the mode-A derivation layer.
+#
+# Keys are the ``translation.outputs.*`` settings keys (the backend file
+# globs live in ``core.translation.service._OUTPUT_FILE_MAP`` — the two
+# lists are pinned together by test so they can never drift).  Values are
+# ``(human label, registry source keys)``: a translation output turns on
+# in mode A when ANY of its source outputs is selected on Step 4.
+#
+# Two keys deliberately carry NO sources — they are manual-mode-only
+# choices and can never be derived:
+#
+# - ``full_markdown``: the whole-book translation is by far the most
+#   expensive translation job; it is not a Step-4 selection (the full
+#   markdown is the conversion's core artifact, always produced) and must
+#   stay an explicit "Let me choose" tick, never an implicit default.
+# - ``social``: deprecated output (V13.30.0) — gone from Step 4 (D6), so
+#   no Step-4 selection can ever map to it.
+_TRANSLATION_OUTPUT_MAP: dict[str, tuple[str, tuple[str, ...]]] = {
+    "full_markdown": ("Full book Markdown", ()),
+    "chapter_summaries": ("Chapter summaries", ("executive_summary", "thorough_summary")),
+    "keypoints": ("Keypoints", ("keypoints",)),
+    "simplified_keypoints": ("Simplified keypoints", ("simplified_keypoints",)),
+    "briefing": ("Executive briefing", ("briefing",)),
+    "podcast": ("Podcast script", ("podcast",)),
+    "flashcards": ("Flashcards", ("flashcards",)),
+    "obsidian": ("Obsidian KB", ("obsidian",)),
+    "study_guide": ("Study guide", ("study_guide",)),
+    "social": ("Social media pack", ()),
+    "mindmap": ("Mind map", ("mindmap",)),
+}
+
+
+def selected_translation_outputs(source: object) -> dict[str, bool]:
+    """V0.7.4 (wizard rework ⑥, D15): the Step-4 selection, projected onto
+    the translation outputs.
+
+    Mode A of the wizard's Step 6 ("The outputs I selected in step 4")
+    derives ``translation.outputs`` from the Step-4 selection at Start —
+    the derivation happens in the wizard's settings save (translation is
+    a settings-driven post-conversion phase, NOT part of
+    ``ConversionRequest``), so this function is pure data projection: it
+    reads the same ``wizard_attr`` flags ``selected_output_names`` reads
+    and returns a complete ``{translation_key: bool}`` dict (every key of
+    ``_TRANSLATION_OUTPUT_MAP`` is present, so a mode-A Start rewrites
+    the whole selection — no stale carryover from a previous manual
+    choice).
+
+    Rules (mirroring ``selected_output_names``):
+    - deprecated source outputs never map (D6 — unselectable on Step 4);
+    - ``summary_child`` sources count only while ``generate_summaries``
+      is on (audit §W6 — the family cleanly no-ops under the master
+      switch);
+    - sourceless keys (``full_markdown``, ``social``) are always False.
+    """
+    summaries_on = bool(getattr(source, "generate_summaries", True))
+    by_key = {spec.key: spec for spec in OUTPUT_REGISTRY}
+    out: dict[str, bool] = {}
+    for tr_key, (_label, source_keys) in _TRANSLATION_OUTPUT_MAP.items():
+        out[tr_key] = False
+        for src_key in source_keys:
+            spec = by_key.get(src_key)
+            if spec is None or spec.deprecated or not spec.wizard_attr:
+                continue
+            if spec.summary_child and not summaries_on:
+                continue
+            if bool(getattr(source, spec.wizard_attr, False)):
+                out[tr_key] = True
+                break
+    return out
+
+
+def translation_output_label(translation_key: str) -> str:
+    """The human label for a ``translation.outputs.*`` key (mode-A review
+    copy).  Unknown keys fall back to the key itself."""
+    entry = _TRANSLATION_OUTPUT_MAP.get(translation_key)
+    return entry[0] if entry else translation_key
+
+
 def get_output_by_key(key: str) -> OutputSpec | None:
     """Look up an OutputSpec by its slug key.  Returns None if not found."""
     for o in OUTPUT_REGISTRY:
@@ -641,4 +720,6 @@ __all__ = [
     "get_settings_section_outputs",
     "get_active_outputs",
     "selected_output_names",
+    "selected_translation_outputs",
+    "translation_output_label",
 ]
