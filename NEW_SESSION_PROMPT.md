@@ -1,4 +1,4 @@
-# New Session Prompt — Elixir Wizard-Rework Campaign: THE AUDIT SESSION (V0.7.5 shipped — verify everything, hunt bugs, prove nothing is unfinished)
+# New Session Prompt — Elixir: THE CLEANUP + AUDIT SESSION (V0.7.6 first — honest green + format-clean — then the full campaign audit: verify everything, hunt bugs, FIX everything found)
 
 ## WHO I AM AND HOW TO TALK TO ME
 
@@ -12,37 +12,46 @@ unless you ran it in this session and can show what you ran.
 
 **Elixir** — a PySide6 desktop app + local LLM (llama.cpp / Ollama) that
 converts and summarizes books, at `https://github.com/assadigit/elixir`,
-branch **`main`**, version **V0.7.5** (tag pushed, GitHub Release
-published — release id 435620062). The wizard-rework campaign
+branch **`main`**, starting this session at **V0.7.5** (tag pushed;
+GitHub Release id 435620062). The wizard-rework campaign
 (**V0.6.86 → V0.7.5**, the hotfix + 7 phases, one phase per session) is
 **SHIPPED and CLOSED**: every Round-1 audit finding is fixed, deleted,
 or honestly documented, and every live bug B1-B10 has a disposition.
-The full record is **`docs/CAMPAIGN_CLOSEOUT_V0.7.5.md`** (moved there
-verbatim from the previous NEW_SESSION_PROMPT.md — it is your
-verification list).
+The full record is **`docs/CAMPAIGN_CLOSEOUT_V0.7.5.md`** — it is the
+audit's verification list.
 
 Purely Python — any Next.js sandbox at `/home/z/my-project` is
 disposable tooling, NOT part of the project. **Read `AGENTS.md`
 first** — its 7 rules are non-negotiable (especially Rule 2
 evidence-first; this session's report is nothing without evidence, and
-Rule 3 net-green applies to docs commits too).
+Rule 3 net-green applies to every commit you make).
 
-**This session is NOT a feature session and NOT a release session.**
-It is the campaign audit I (the owner) am ordering: independently
-re-verify what the campaign claims, hunt for bugs the campaign may
-have missed, and make sure nothing is unfinished, missing, or not
-fixed yet. **NO VERSION bump, NO re-release, NO changes to core/,
-ui_qt/, utils/, tests/ — unless a REGRESSION FINDING emerges, in which
-case you STOP and report it to me with evidence before touching
-anything.**
+## MY THREE ANSWERS — THEY ARE ORDERS, BAKED INTO THIS PROMPT
 
-## THE AUDIT'S SOURCE-OF-TRUTH DOCUMENTS (read in full before running anything)
+1. **Fix everything you find.** The audit is NOT read-only: every
+   finding gets fixed in this session, each in its own commit with its
+   own pin test where relevant, the evidence in the commit body. The
+   ONLY exception: a fix that would re-architect a subsystem or
+   overturn one of the plan's locked decisions (D1-D21) comes to me
+   first with the evidence — I decide, you implement.
+2. **Cleanup first, audit after.** Part 1 clears the known debt — the
+   13 pre-existing test failures, the transcribe e2e's 5 standalone
+   failures, and the 9 format flags — and ships it as **V0.7.6** (a
+   maintenance release, zero runtime behaviour change). Only then does
+   the audit run, against a fully clean tree, so any failure it sees
+   is a FINDING, not a known item.
+3. **The ~35 repo-root scratch files:** you inventory them, propose
+   the cleanup (per item: delete / move under docs/ / keep — each with
+   a grep proving nothing references it), I approve, then it lands as
+   ONE separate `chore` commit. **No deletion before my approval.**
+   If I am not answering, skip it, record the proposal in the report,
+   and continue — never block the session on it.
+
+## THE SOURCE-OF-TRUTH DOCUMENTS (read in full before running anything)
 
 1. `docs/CAMPAIGN_CLOSEOUT_V0.7.5.md` — the campaign record: the
-   phase-by-phase table (what shipped, per release), every bug's
-   disposition, the deferred backlog, the owner's-call leftovers, the
-   verified rig baseline. Every claim in it goes on your
-   verification list.
+   phase-by-phase table, every bug's disposition, the deferred
+   backlog, the owner's-call leftovers, the verified rig baseline.
 2. `ELIXIR_WIZARD_REWORK_ROUND_1_AUDIT.md` — the original findings
    register (the B1-B10 evidence lines, the §W findings).
 3. `ELIXIR_WIZARD_REWORK_ROUND_2_PLAN.md` — the contract (D1-D21, the
@@ -51,82 +60,115 @@ anything.**
    release's own claims and numbers.
 5. `CHANGELOG.md` — the campaign entries' consistency.
 
-## THIS SESSION'S MISSION — THE AUDIT
+## PART 1 — THE CLEANUP FIRST (ships as V0.7.6)
 
-Verdict-first: the deliverable is **`docs/AUDIT_CAMPAIGN_V0.7.5.md`**,
-every claim marked **VERIFIED / FAILED / COULD-NOT-VERIFY** with the
-exact command + output that proves it, plus every new finding ranked
-by severity (REGRESSION > BUG > STALENESS > HYGIENE). Work through:
+**1a — the 13 pre-existing failures → honest green.** The documented
+inventory: 5 vibevoice/TTS-constants rig tests; 5 stale source pins
+(test_v1820412_c_llm_errors' transcribe combo, test_v182044 ×2,
+test_v182049_wb12, test_v18_15_9's primary-button outline); 3 rig
+quirks (test_p4_edge_cases_pdf Farsi presentation-forms; test_v0619
+big5 + euc_kr chardet statistics). For EACH: diagnose WHY it fails on
+this rig, then the honest fix — a stale pin gets updated to the REAL
+current behaviour (evidence captured in the commit); a rig-variance
+test becomes environment-aware (assert the intent where the
+environment can produce it, assert the documented alternative outcome
+where it cannot); `xfail`-with-reason is the documented LAST resort
+only. **NEVER weaken the regression intent to get green.** One commit
+per finding family. Then the transcribe e2e standalone
+(tests/test_v0600_tool_transcribe_podcast_e2e.py, its 5 = 5
+pre-existing): diagnose each of the 5 the same honest way and fix what
+is refreshable. Goal: **full suite 0 failures on this rig, podcast e2e
+0 standalone** — anything that genuinely cannot be fixed without
+weakening gets xfail-with-reason and appears in the report with its
+reason.
 
-### Phase A — the record vs the repo (read-only)
+**1b — the 9 format flags → format-clean repo.** One commit: `ruff
+format` on exactly the 9 documented pre-V0.6.83 files
+(test_m2_dashboard, test_v0669_local_llm_lights, test_v182048_p6_icon_cache,
+components/icons.py, components/llamacpp_config.py,
+settings/sections/output_sections.py, settings/tts_page.py,
+views/about_system_dialog.py, views/token_cost_dialog.py). After it,
+`ruff format --check` is clean repo-wide and `ruff check` stays clean.
+Zero behaviour change — prove it: the diff is format-only (show the
+`--stat`) and the full suite re-runs green.
 
-**A1 — repo + release integrity.**
-- `git log --oneline -10` from the top: the audit-prompt docs commit
-  (this file), `3563ff7` (the campaign close-out), `edcaa6f` (the
-  V0.7.5 release), `387dbad`, `6ab56cb`, `3cfc6a0`, `f1987cb`,
-  `343e435`, `3393544`, `72f7d4`; tag `V0.7.5` present; VERSION =
-  0.7.5.
-- GitHub (token in the Authorization header — anonymous calls hit 403
-  rate limits): Releases V0.6.86 → V0.7.5 all exist with their zips,
-  plus the `-windows` installer releases (V0.7.5-windows carries
-  Elixir-Setup-0.7.5.exe). The V0.7.5 zip asset must be byte-identical
-  to a fresh `git archive --format=zip --prefix=Elixir-V0.7.5/ V0.7.5`
-  (sha256 both sides; if the sandbox's `/home/z/my-project/download/`
-  copy is absent, fetch the asset with the token).
-- CHANGELOG carries every campaign entry; `release_notes/` complete
-  for all 8 releases.
-- **Pre-known findings to confirm and quantify** (found in the
-  pre-audit check; they go in the report):
-  (a) the README badges are stale — the version badge says 0.6.69 and
-  the tests badge says 8618 passed / 18 failed, while the truth is
-  0.7.5 and the V0.7.5 differential numbers (9,183 passed / the
-  documented 13-failure inventory) — this is a Phase-B fix;
-  (b) the repo root carries ~35 scratch files committed on main:
-  the now*.png working screenshots (≈30 of them), 369.png,
-  508782d6-4b80-48be-9046-d081ce258b75.png, three nested zips
-  (ELIXIR_UI_UX_IMPLEMENTATION_PACKAGE.zip, Elixir-Document-Type-Modes.zip,
-  Elixir-diagnostics.zip), and the working-session MDs (including
-  ELIXIR_UI_UX_CORRECTION_ROUND_2 (1).md with its duplicate " (1)"
-  download suffix) — they all ship inside every release zip (the 33 MB
-  size). Inventory them and PROPOSE the cleanup (Phase C decision —
-  do not delete anything yet);
-  (c) `/releases/latest` currently resolves to the V0.7.5-windows
-  installer release rather than the V0.7.5 source release (cosmetic;
-  verify + note it — no action unless I say so).
+**1c — the README badges.** The version badge says 0.6.69 and the
+tests badge says 8618 passed / 18 failed — both stale. One
+`docs(readme)` commit with the REAL post-1a numbers (version 0.7.6;
+the actual passed/failed counts from your verified run).
 
-**A2 — the suite on this rig** (rebuild first — KNOWN RIG STATE below):
-- Full suite with the documented mechanics: expect **≥ 9,183 passed**;
-  the failure inventory must be byte-identical to the documented 13:
-  5 vibevoice/TTS-constants rig tests, 5 stale source pins
-  (test_v1820412_c_llm_errors' transcribe combo, test_v182044 ×2,
-  test_v182049_wb12, test_v18_15_9's primary-button outline), 3 rig
-  quirks (test_p4_edge_cases_pdf Farsi presentation-forms; test_v0619
-  big5 + euc_kr chardet statistics). **REDISCOVER the exact list by
-  running it — do not trust the doc's memory.**
-- The transcribe e2e standalone: 5 = 5 pre-existing.
-- `ruff check` clean repo-wide; `ruff format --check` flags EXACTLY
-  the 9 documented pre-V0.6.83 files (test_m2_dashboard,
-  test_v0669_local_llm_lights, test_v182048_p6_icon_cache,
-  components/icons.py, components/llamacpp_config.py,
-  settings/sections/output_sections.py, settings/tts_page.py,
-  views/about_system_dialog.py, views/token_cost_dialog.py).
-- The campaign's pin-file ladder green: test_v0686_wizard_hotfix,
-  the V0.7.0-V0.7.3 pin files, test_v0740_step6_translation,
-  test_v0750_steps7_7b.
+**1d — THE CHECKPOINT (the one place you wait for me).** Present
+together, in one message: (i) the cleanup summary, ready to tag;
+(ii) the scratch-file inventory + per-item proposal — the now*.png
+working screenshots (≈30), 369.png, 508782d6-4b80-48be-9046-d081ce258b75.png,
+the three nested zips (ELIXIR_UI_UX_IMPLEMENTATION_PACKAGE.zip,
+Elixir-Document-Type-Modes.zip, Elixir-diagnostics.zip), and the
+working-session MDs (including ELIXIR_UI_UX_CORRECTION_ROUND_2 (1).md
+with its duplicate " (1)" suffix) — each item with a grep proving no
+code or living doc references it, and a disposition (delete / move
+under docs/ / keep); the source-of-truth documents (AGENTS.md,
+AGENT_HANDOFF.md, the Round-1 audit, the Round-2 plan, the ROUND_3/4/5
+correction MDs, ELIXIR_VISUAL_FIDELITY_CORRECTION_SPEC.md,
+Project-History.md, SESSION_REPORT.md, NEW_SESSION_PROMPT.md) STAY
+unless I say otherwise; (iii) the proposed `.gitignore` additions
+(the now*.png scratch pattern) so this never recurs. **WAIT for my
+answer.** Approved → the `chore` commit lands FIRST, so the V0.7.6 zip
+ships without the scratch payload (the ~33 MB shrinks accordingly).
+No answer after a reasonable wait → tag without it and record the
+pending proposal in the audit report.
 
-**A3 — the whole-campaign differential (the core no-regression claim).**
-- Worktree at the pre-campaign commit (the parent of `2a09376`, the
-  V0.6.86 hotfix): `git worktree add --detach /tmp/elixir-base <sha>`;
-  same venv; full suite both sides (the transcribe e2e deselected from
-  the full runs, run standalone both sides).
-- Compare sorted FAILURE INVENTORIES, not pass counts (the campaign
-  added ~700 tests, so pass counts legitimately differ). The claim to
-  verify: **every HEAD-side failure is either in the pre-campaign
-  inventory or one of the documented rig items.** Anything else = a
-  REGRESSION FINDING — the highest severity; stop and report before
-  touching anything.
+**1e — release V0.7.6** per Rules 5-6: VERSION bump, CHANGELOG entry,
+`release_notes/V0.7.6.md` (a maintenance release: the pin refresh +
+the format sweep + the badges [+ the scratch removal if approved] —
+zero runtime behaviour change, stated plainly), build the zip with
+`git archive --format=zip --prefix=Elixir-V0.7.6/ -o
+/home/z/my-project/download/Elixir-V0.7.6.zip V0.7.6` BEFORE calling
+tools/publish_release.py (it uploads an existing zip, it does not
+build one), tag + push + GitHub Release. Publishing V0.7.6 also
+naturally re-points `/releases/latest` at a source release (today's
+cosmetic quirk: it resolves to the V0.7.5-windows installer variant).
 
-**A4 — claim-by-claim verification (the close-out table + release notes).**
+## PART 2 — THE AUDIT (against V0.7.6 — every claim VERIFIED / FAILED / COULD-NOT-VERIFY, with the exact command + output)
+
+**A1 — repo + release integrity.** `git log --oneline -12` from the
+top: this prompt's docs commit, then `2269feb` (the superseded first
+audit prompt), `3563ff7` (the campaign close-out), `edcaa6f` (the
+V0.7.5 release), `387dbad`, `6ab56cb`, `3cfc6a0`, `f1987cb`,
+`343e435`, `3393544`, `72f7d4`; tags `V0.7.5` + `V0.7.6`; VERSION =
+0.7.6. GitHub (token in the Authorization header — anonymous calls
+hit 403 rate limits): Releases V0.6.86 → V0.7.6 all present with
+their zips, plus the `-windows` installer releases (V0.7.5-windows
+carries Elixir-Setup-0.7.5.exe). The V0.7.5 zip asset vs a fresh
+`git archive --format=zip --prefix=Elixir-V0.7.5/ V0.7.5`: compare
+the EXTRACTED TREES per-file (raw zip bytes can differ on container
+metadata; report raw-byte equality if it holds). CHANGELOG carries
+every campaign entry; `release_notes/` complete for all 9 releases.
+The 3 pre-known findings now expected RESOLVED — verify each: (a) the
+README badges current; (b) the scratch files gone (or the proposal
+recorded if I hadn't answered); (c) `/releases/latest` → V0.7.6.
+
+**A2 — the suite.** Full suite with the documented mechanics:
+**0 failures expected** (post-1a) — REDISCOVER the list by running,
+do not trust any doc's memory. The transcribe e2e standalone: 0 (or
+the xfail-documented remainder). `ruff check` clean; `ruff format
+--check` clean repo-wide (the 9-file flag set gone after 1b). The
+campaign's pin-file ladder green: test_v0686_wizard_hotfix, the
+V0.7.0-V0.7.3 pin files, test_v0740_step6_translation,
+test_v0750_steps7_7b.
+
+**A3 — the whole-campaign differential (the core no-regression
+claim).** Worktree at the pre-campaign commit (the parent of
+`2a09376`, the V0.6.86 hotfix — resolve it with `git log`): `git
+worktree add --detach /tmp/elixir-base <sha>`; same venv; full suite
+both sides (the transcribe e2e deselected from the full runs, run
+standalone both sides). Compare sorted FAILURE INVENTORIES, not pass
+counts (the campaign added ~700 tests and 1a refreshed more). With
+HEAD expecting 0 failures, ANY HEAD-side failure not in the baseline
+inventory is a **REGRESSION FINDING** — highest severity: diagnose,
+fix (my answer 1), pin it.
+
+**A4 — claim-by-claim verification (the close-out table + the release
+notes).**
 - **B1-B10, one by one:** for each disposition (fixed /
   closed-by-deletion / closed-by-retirement) locate the fixing
   commit(s), re-run its pin tests, and re-check the original audit
@@ -152,23 +194,22 @@ by severity (REGRESSION > BUG > STALENESS > HYGIENE). Work through:
 - **The 7d recommended button:** perturb → click → restore, and the
   no-settings-owned-writes pin.
 - **The golden/eval baselines:** the 3 formerly-stale tests
-  (test_golden_freeze's prompt-manifest + test_p4_eval_gate ×2) now
-  PASS (the 7c re-freeze); the eval gate reports OK.
+  (test_golden_freeze's prompt-manifest + test_p4_eval_gate ×2) PASS
+  (the 7c re-freeze); the eval gate reports OK.
 
-**A5 — the rendered truth (visual).**
-- Re-run `scripts/v0750_full_sweep.py` — the REAL full WizardView, all
-  10 steps, both themes, the 34 checks, 0 failures expected.
-- Fresh grabs of the reworked steps (1, 2, 4, 5, 6, 7, 7b) — both
-  themes, both sizes (740×540 + 820×600), one variant per process
-  (the grab_v0750_steps7.py pattern) — then the VLM pass
-  (`z-ai vision -i <png> -o <json>` from /home/z/my-project, read the
-  JSON's choices[0].message.content) with the zoomed-crop discipline:
-  investigate every flag on a 2-4× crop before believing it (the
-  campaign disproved 3 of its 4 VLM flags that way — at V0.7.5 one
-  flag was real and got fixed, one was disproven by pixel
-  measurement).
+**A5 — the rendered truth (visual).** Re-run
+`scripts/v0750_full_sweep.py` — the REAL full WizardView, all 10
+steps, both themes, the 34 checks, 0 failures expected. Fresh grabs
+of the reworked steps (1, 2, 4, 5, 6, 7, 7b) — both themes, both
+sizes (740×540 + 820×600), one variant per process (the
+grab_v0750_steps7.py pattern) — then the VLM pass (`z-ai vision -i
+<png> -o <json>` from /home/z/my-project, read the JSON's
+choices[0].message.content) with the zoomed-crop discipline:
+investigate every flag on a 2-4× crop before believing it (the
+campaign disproved 3 of its 4 VLM flags that way — at V0.7.5 one flag
+was real and got fixed, one was disproven by pixel measurement).
 
-### Phase B — bug hunting (the campaign's blind spots)
+## PART 3 — BUG HUNTING (the campaign's blind spots)
 
 Beyond re-verification, actively hunt (offscreen, the modal-recorder
 pattern, every offscreen trap honoured):
@@ -196,22 +237,25 @@ pattern, every offscreen trap honoured):
   must be CLEANLY absent or unchanged — deferred, not half-shipped;
   any orphan code from them is a finding.
 
-### Phase C — the deliverables
+## PART 4 — FIX EVERYTHING FOUND, THEN REPORT
 
-1. **`docs/AUDIT_CAMPAIGN_V0.7.5.md`** — the verdict-first audit
-   report: per-claim PASS/FAIL with evidence, the findings ranked
-   (REGRESSION > BUG > STALENESS > HYGIENE), and the final "what
-   remains" menu (the deferred backlog + the owner's-call leftovers +
-   this audit's new findings, each with a recommendation). One docs
-   commit, pushed.
-2. **Pre-approved bounded fixes — documentation-only:** the README
-   badge staleness and similar doc/config drift as ONE `docs(readme)`
-   commit. NOTHING under core/, ui_qt/, utils/, tests/ changes without
-   my explicit approval of the specific finding first.
-3. The closing **NEW_SESSION_PROMPT.md** (the post-audit menu for
-   whatever I choose next — a cleanup session, a backlog pickup, or
-   nothing), committed + pushed.
-4. Report to me in plain words: the verdict, the findings, the menu.
+- Every finding: ranked (**REGRESSION > BUG > STALENESS > HYGIENE**),
+  diagnosed with evidence, fixed in its own commit (+ a pin test where
+  relevant), a conventional commit with the evidence in the body.
+- **V0.7.7 ships IFF the fixes changed runtime code** (core/, ui_qt/,
+  utils/, config/) — the same Rules 5-6 procedure (VERSION + CHANGELOG
+  + release_notes + git-archive zip + tag + GitHub Release).
+  Test-only or docs-only fixes land as commits without a release.
+- **`docs/AUDIT_CAMPAIGN_V0.7.5.md`** — the verdict-first audit
+  report: per-claim PASS/FAIL with evidence; the findings table (each:
+  severity, root cause, the fix commit, the test that pins it); the
+  "what remains" menu (the 5 deferred backlog items + anything
+  genuinely unfixable this session, each with its reason and a
+  recommendation). One docs commit, pushed.
+- The closing **NEW_SESSION_PROMPT.md** (the post-audit menu for
+  whatever I choose next), committed + pushed.
+- Report to me in plain words: the verdict, what you found, what you
+  fixed, what remains.
 
 ## KNOWN RIG STATE (the verified V0.7.5 baseline — the sandbox reset wipes it)
 
@@ -236,7 +280,7 @@ pattern, every offscreen trap honoured):
   Use `-p no:randomly` for stable order. Deselect
   `tests/test_v0600_tool_transcribe_podcast_e2e.py` from full-suite
   runs (it SEGFAULTS in the combination; standalone it fails 5 = 5
-  pre-existing). Differential baselines via
+  pre-existing — 1a takes those on). Differential baselines via
   `git worktree add --detach /tmp/elixir-base <commit>`, same venv,
   compare sorted FAILED inventories.
 - **Offscreen traps (all still true):** never `wizard._go_next()` with
@@ -258,18 +302,28 @@ pattern, every offscreen trap honoured):
 ## THE LOOP (session mechanics)
 
 Recover: `cd /home/z/elixir-repo` (clone with the session token if
-absent). Baseline per the rig notes above. Orient: AGENTS.md → this
-prompt → docs/CAMPAIGN_CLOSEOUT_V0.7.5.md → the Round-1 audit §0/§3
-(the bug register) → the Round-2 plan §5 (the backlog) →
-release_notes/V0.7.5.md. Then Phase A → B → C, one commit per unit,
-push per Rule 7, conventional commits with the evidence in the body.
-**GITHUB Token (one-off, never commit it):** use the token from the
-session context for git push and the API calls. If it is expired, ask
-me for a fresh one.
+absent — the token in old session prompts is single-use). `git log
+--oneline -12` from the top: this prompt's docs commit, `2269feb`
+(the superseded first audit-prompt revision), `3563ff7` (the campaign
+close-out), `edcaa6f` (the V0.7.5 release), `387dbad`, `6ab56cb`,
+`3cfc6a0`, `f1987cb`, `343e435`, `3393544`, `72f7d4`; tag `V0.7.5`
+pushed; VERSION 0.7.5. Baseline per the rig notes above. Orient:
+AGENTS.md → this prompt → docs/CAMPAIGN_CLOSEOUT_V0.7.5.md → the
+Round-1 audit §0/§3 (the bug register) → the Round-2 plan §5 (the
+backlog) → release_notes/V0.7.5.md. Then Part 1 → the 1d checkpoint →
+V0.7.6 → Part 2 → Part 3 → Part 4; one commit per unit, push per Rule
+7, conventional commits with the evidence in the body. **If the
+session runs out of room mid-way: write the handoff
+NEW_SESSION_PROMPT.md for the EXACT stopping point (what is done, what
+is next, the in-flight state), commit + push it, and say so in your
+report.** GITHUB Token (one-off, never commit it): use the token from
+the session context for git push and the API calls. If it is expired,
+ask me for a fresh one.
 
-What this session delivers in plain words: an independent,
+What this session delivers in plain words: first the housekeeping
+release (V0.7.6) that makes the test suite honestly green, the repo
+format-clean, and the README truthful; then an independent,
 evidence-backed answer to "did the campaign do everything it claimed,
-and is anything still broken, missing, or half-done?" — plus a short
-ranked list of anything found, and a menu of what I might order next.
-Nothing ships and nothing in the app itself changes, unless you find a
-regression and I say so.
+and is anything still broken, missing, or half-done?" — with every
+finding FIXED in the same session, each fix carrying its own proof —
+and a short menu of what is genuinely left.
