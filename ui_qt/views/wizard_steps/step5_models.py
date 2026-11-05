@@ -216,12 +216,19 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
         # The ONE summarization model
         local_lay.addWidget(QLabel("Summarization model:"))
         self.summ_combo = QComboBox()
+        # V0.7.3 (wizard rework ⑤, D14): the combos open on the user's
+        # LAST-USED picks (settings) instead of empty — "manual picking,
+        # auto-remembered." The refresh keeps the pick selected while the
+        # server still lists it and re-adds it when it doesn't (a
+        # temporarily-down server must not forget the user's choice).
+        self._seed_model_combo(self.summ_combo, "summarisation.model")
         local_lay.addWidget(self.summ_combo)
 
         # OCR model
         self.ocr_label = QLabel("OCR model:")
         local_lay.addWidget(self.ocr_label)
         self.ocr_combo = QComboBox()
+        self._seed_model_combo(self.ocr_combo, "ocr.primary_model")
         local_lay.addWidget(self.ocr_combo)
 
         host_lay.addWidget(self.local_box)
@@ -550,6 +557,23 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
                 idx = combo.findData(current)
                 if idx >= 0:
                     combo.setCurrentIndex(idx)
+                else:
+                    # V0.7.3 (rework ⑤, D14): the last-used pick is not on
+                    # the server right now — keep it selectable anyway (the
+                    # remembered choice must survive a temporarily-down or
+                    # reloaded server); it sits right under "(use default)".
+                    combo.insertItem(1, current, current)
+                    combo.setCurrentIndex(1)
+
+    def _seed_model_combo(self, combo: QComboBox, settings_key: str) -> None:
+        """V0.7.3 (wizard rework ⑤, D14): open the combo on the last-used
+        pick from settings, before any refresh has run — the wizard shows
+        what the user last chose, not an empty box."""
+        saved = str(self.controller.get_setting(settings_key, "") or "").strip()
+        combo.addItem("  (use default)", "")
+        if saved:
+            combo.addItem(saved, saved)
+            combo.setCurrentIndex(1)
 
     def _on_models_failed(self, _err: str) -> None:
         """W-b11: fetch failed — fail-soft (W-b18 class: never leave the

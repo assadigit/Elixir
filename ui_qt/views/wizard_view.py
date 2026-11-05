@@ -1162,6 +1162,22 @@ class WizardView(QDialog):
         self._stop_hardware_monitor()
         self._stop_elapsed_timer()
 
+        # V0.7.3 (wizard rework ⑤, D14): remember the model picks on a
+        # SUCCESSFUL run — "manual picking, auto-remembered." The picks are
+        # also written at Start (the step-5 save); this re-confirms them
+        # only when the run actually succeeded, so the next wizard opens on
+        # what worked (a failed run leaves the earlier working pick intact).
+        if getattr(result, "success", False):
+            try:
+                self.controller.update_setting(
+                    "summarisation.model", self.state.summarisation_model or ""
+                )
+                self.controller.update_setting(
+                    "ocr.primary_model", self.state.primary_ocr_model or ""
+                )
+            except Exception:
+                logger.debug("model-pick persistence skipped", exc_info=True)
+
         # V10.24.0: Show the modal directly (not via singleShot).
         # The singleShot(0) approach was causing the modal to not appear
         # in some cases — the event loop was busy with pending log

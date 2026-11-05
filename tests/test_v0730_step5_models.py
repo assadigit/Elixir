@@ -167,6 +167,9 @@ class _StubController:
     def set_secret(self, path, value):
         self.secrets[path] = value
 
+    def list_ollama_models(self):
+        return []
+
 
 class _FakeSignal:
     def connect(self, *args, **kwargs):
@@ -193,6 +196,22 @@ class _FakeWorker:
         pass
 
 
+def _build_step5(settings=None):
+    """Build Step 5 offscreen with the listing worker stubbed (no HTTP)."""
+    import ui_qt.views.wizard_steps.step5_models as step5_mod
+    from ui_qt.views.wizard_steps.shared import WizardState
+    from ui_qt.views.wizard_steps.step5_models import Step5Models
+
+    _FakeWorker.captured = []
+    orig = step5_mod.SimpleWorker
+    step5_mod.SimpleWorker = _FakeWorker
+    try:
+        step = Step5Models(_StubController(settings), WizardState())
+    finally:
+        step5_mod.SimpleWorker = orig
+    return step
+
+
 class TestStep5DispatchOffscreen:
     @pytest.fixture(scope="class")
     def app(self):
@@ -200,18 +219,7 @@ class TestStep5DispatchOffscreen:
         return QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
 
     def _build(self, settings=None):
-        import ui_qt.views.wizard_steps.step5_models as step5_mod
-        from ui_qt.views.wizard_steps.shared import WizardState
-        from ui_qt.views.wizard_steps.step5_models import Step5Models
-
-        _FakeWorker.captured = []
-        orig = step5_mod.SimpleWorker
-        step5_mod.SimpleWorker = _FakeWorker
-        try:
-            step = Step5Models(_StubController(settings), WizardState())
-        finally:
-            step5_mod.SimpleWorker = orig
-        return step
+        return _build_step5(settings)
 
     def test_ollama_backend_lists_via_ollama_worker(self, app):
         step = self._build({"summarisation.provider": "ollama"})
@@ -304,3 +312,159 @@ class TestStep5DispatchOffscreen:
         finally:
             step.hide()
             step.deleteLater()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 5b — preference memory (D14): the combos remember the last-used picks
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestPreferenceMemory:
+    @pytest.fixture(scope="class")
+    def app(self):
+        QtWidgets = _qt_or_skip()
+        return QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+
+    _SAVED = {
+        "summarisation.provider": "ollama",
+        "summarisation.model": "gemma4-12b:latest",
+        "ocr.primary_model": "qwen3-vl:8b",
+    }
+
+    def test_combos_open_on_last_used_picks(self, app):
+        """D14: the wizard shows what the user last chose, not an empty box —
+        the picks are visible BEFORE any refresh runs."""
+        step = _build_step5(self._SAVED)
+        try:
+            assert step.summ_combo.currentData() == "gemma4-12b:latest"
+            assert step.ocr_combo.currentData() == "qwen3-vl:8b"
+            assert step.summ_combo.currentText() == "gemma4-12b:latest"
+        finally:
+            step.hide()
+            step.deleteLater()
+
+    def test_no_saved_pick_shows_use_default(self, app):
+        step = _build_step5({"summarisation.provider": "ollama"})
+        try:
+            assert step.summ_combo.currentData() == ""
+            assert step.summ_combo.currentText().strip() == "(use default)"
+        finally:
+            step.hide()
+            step.deleteLater()
+
+    def test_refresh_keeps_pick_the_server_still_lists(self, app):
+        step = _build_step5(self._SAVED)
+        try:
+            step._on_models_loaded(["gemma4-12b:latest", "qwen3-vl:8b", "other:3b"])
+            assert step.summ_combo.currentData() == "gemma4-12b:latest"
+            assert step.ocr_combo.currentData() == "qwen3-vl:8b"
+            # The full server list is offered.
+            assert step.summ_combo.count() == 4  # default + 3 listed
+        finally:
+            step.hide()
+            step.deleteLater()
+
+    def test_refresh_readds_pick_the_server_no_longer_lists(self, app):
+        """A temporarily-down or reloaded server must not forget the pick —
+        the remembered choice stays selectable right under (use default)."""
+        step = _build_step5(self._SAVED)
+        try:
+            step._on_models_loaded(["some-other-model"])
+            assert step.summ_combo.currentData() == "gemma4-12b:latest", (
+                "the last-used pick must survive a server that doesn't list it"
+            )
+            assert step.summ_combo.findData("gemma4-12b:latest") == 1
+            assert step.summ_combo.itemText(0).strip() == "(use default)"
+        finally:
+            step.hide()
+            step.deleteLater()
+
+    def test_save_round_trips_the_picks(self, app):
+        """Pick → save → settings: the D14 round trip (load-then-save)."""
+        step = _build_step5(dict(self._SAVED))
+        ctrl = step.controller
+        try:
+            step._on_models_loaded(["gemma4-12b:latest", "qwen3-vl:8b", "new-model"])
+            step.summ_combo.setCurrentIndex(step.summ_combo.findData("new-model"))
+            step.ocr_combo.setCurrentIndex(step.ocr_combo.findData("qwen3-vl:8b"))
+            step.save_to_state()
+            assert ctrl._settings["summarisation.model"] == "new-model"
+            assert ctrl._settings["ocr.primary_model"] == "qwen3-vl:8b"
+            assert step.state.summarisation_model == "new-model"
+        finally:
+            step.hide()
+            step.deleteLater()
+
+    def test_save_keeps_seeded_pick_without_refresh(self, app):
+        """No refresh at all (server down): the seeded pick still saves."""
+        step = _build_step5(dict(self._SAVED))
+        ctrl = step.controller
+        try:
+            step.save_to_state()
+            assert ctrl._settings["summarisation.model"] == "gemma4-12b:latest"
+            assert ctrl._settings["ocr.primary_model"] == "qwen3-vl:8b"
+        finally:
+            step.hide()
+            step.deleteLater()
+
+
+class TestSuccessRunPersistence:
+    """D14: 'saves the selections on a successful run' — the wizard's
+    _on_complete re-confirms the model picks only on success."""
+
+    @pytest.fixture(scope="class")
+    def app(self):
+        QtWidgets = _qt_or_skip()
+        return QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+
+    def _wizard(self, monkeypatch, tmp_path):
+        import tempfile
+
+        monkeypatch.setenv("HOME", tempfile.mkdtemp(prefix="elixir-v0730-home-"))
+        import ui_qt.views.wizard_steps.step5_models as step5_mod
+        from ui_qt.views.wizard_view import WizardView
+
+        ctrl = _StubController()
+        orig = step5_mod.SimpleWorker
+        step5_mod.SimpleWorker = _FakeWorker
+        try:
+            view = WizardView(ctrl)
+        finally:
+            step5_mod.SimpleWorker = orig
+        # The completion modal is not under test — stub it (it would exec
+        # a native dialog offscreen).
+        monkeypatch.setattr(view, "_show_completion_modal", lambda result: None)
+        return view, ctrl
+
+    def test_success_persists_the_picks(self, app, monkeypatch, tmp_path):
+        from core.models.models import ConversionResult
+
+        view, ctrl = self._wizard(monkeypatch, tmp_path)
+        try:
+            view.state.summarisation_model = "worked-model"
+            view.state.primary_ocr_model = "worked-vlm"
+            view._on_complete(ConversionResult(success=True))
+            assert ctrl._settings["summarisation.model"] == "worked-model"
+            assert ctrl._settings["ocr.primary_model"] == "worked-vlm"
+        finally:
+            view.hide()
+            view.deleteLater()
+
+    def test_failure_leaves_the_earlier_pick_intact(self, app, monkeypatch, tmp_path):
+        from core.models.models import ConversionResult
+
+        view, ctrl = self._wizard(monkeypatch, tmp_path)
+        try:
+            ctrl._settings["summarisation.model"] = "earlier-working-pick"
+            view.state.summarisation_model = "attempted-model"
+            view._on_complete(ConversionResult(success=False, error_msg="boom"))
+            assert ctrl._settings["summarisation.model"] == "earlier-working-pick"
+        finally:
+            view.hide()
+            view.deleteLater()
+
+    def test_source_pin_the_success_gate(self):
+        src = _src(_WIZARD)
+        assert 'if getattr(result, "success", False):' in src
+        assert '"summarisation.model", self.state.summarisation_model or ""' in src
+        assert '"ocr.primary_model", self.state.primary_ocr_model or ""' in src
