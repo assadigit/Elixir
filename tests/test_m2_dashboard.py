@@ -132,8 +132,14 @@ class TestSidebarIAPin:
             assert key not in _NAV_KEYS
             assert key in _TOOL_TITLES, f"{key} vanished from TOOL_CARDS (hidden \u2260 removed)"
         about = _strip_comments(_src(_ABOUT))
+        # V0.7.6: whitespace-tolerant match — ruff format re-wrapped the
+        # long tuple rows (one element per line), so the raw '("key"'
+        # literal is wrap-sensitive. The intent is the tuple ENTRY (the
+        # key as a row's first element), not the wrap style.
         for key in audio:
-            assert f'("{key}"' in about, f"About & System 'more tools' row for {key} missing"
+            assert re.search(rf'\(\s*"{key}"', about), (
+                f"About & System 'more tools' row for {key} missing"
+            )
 
     def test_every_tool_label_is_the_exact_toolcards_title(self):
         """No renames: every sidebar tool label equals its TOOL_CARDS title
@@ -346,7 +352,9 @@ class TestHeaderReduction:
         code = _strip_comments(_src(_APP))
         about = _strip_comments(_src(_ABOUT))
         assert "_open_merge_dialog" in code, "the merge flow itself is untouched"
-        assert '("merge", "copy", "Merge Books"' in about
+        # V0.7.6: whitespace-tolerant match — the tuple row was re-wrapped
+        # by ruff format (one element per line); the intent is the entry.
+        assert re.search(r'\(\s*"merge",\s*"copy",\s*"Merge Books"', about)
         assert "open_tool = Signal(str)" in about
         assert "dlg.open_tool.connect(self._on_about_tool_requested)" in code
 
