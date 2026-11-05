@@ -210,7 +210,9 @@ class Step7bFineTune(WizardStep):
         emb_row.setSpacing(8)
         self.embed_combo = QComboBox()
         self.embed_combo.addItem(
-            "🦙 nomic-embed-text (274 MB — via Ollama, just `ollama pull nomic-embed-text`)",
+            # V0.7.2 (wizard rework ④, D9): the 🦙 emoji prefix is gone —
+            # plain combo text (combo items carry no icons).
+            "nomic-embed-text (274 MB — via Ollama, just `ollama pull nomic-embed-text`)",
             "nomic-embed-text",
         )
         # Select the current state's model

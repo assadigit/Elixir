@@ -265,8 +265,11 @@ class TestStep5ScrollBehavior:
     V0.6.14 (single-model order): the expected-title set updated to the
     4-box single-model layout — "Model architecture" is now the 2-option
     "Where does the model run?" (Local/Cloud, writes provider), the ONE
-    cloud box is "☁️ Cloud API configuration (the model)", and the
-    "⚡ Fast API configuration (cheap workhorse)" box is RETIRED."""
+    cloud box is "Cloud API configuration (the model)", and the
+    "⚡ Fast API configuration (cheap workhorse)" box is RETIRED.
+    V0.7.2 (wizard rework ④, D9): the emoji prefixes on the Local/Cloud
+    box titles are gone — plain titles, professional glyphs on the
+    buttons."""
 
     class _StubCtl:
         """Minimal controller — reads only the keys Step5Models touches."""
@@ -320,8 +323,8 @@ class TestStep5ScrollBehavior:
         assert box_titles == {
             "Where does the model run?",
             "Parameters",
-            "☁️ Cloud API configuration (the model)",
-            "🏠 Local configuration",
+            "Cloud API configuration (the model)",  # V0.7.2: emoji prefix gone (D9)
+            "Local configuration",  # V0.7.2: emoji prefix gone (D9)
         }, f"all four boxes must live in the scroll host, got {sorted(box_titles)}"
 
         # The content exceeds the compact viewport → scrolling works and

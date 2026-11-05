@@ -53,7 +53,9 @@ class Step6Translation(WizardStep):
         self.backend_combo = QComboBox()
         # V13.31.0 (#13): NLLB removed from the UI. Only TranslateGemma
         # (Ollama) is exposed.
-        self.backend_combo.addItem("📝 Ollama LLM (TranslateGemma)", "ollama")
+        # V0.7.2 (wizard rework ④, D9): the 📝 emoji prefix is gone from
+        # the control label — plain text (combo items carry no icons).
+        self.backend_combo.addItem("Ollama LLM (TranslateGemma)", "ollama")
         backend_current = self.state.translation_backend or self.controller.get_setting(
             "translation.backend", "ollama"
         )
@@ -87,7 +89,7 @@ class Step6Translation(WizardStep):
         settings_lay.addWidget(QLabel("Harakat model (Farsi TTS diacritics — always Ollama):"))
         self.harakat_combo = QComboBox()
         for m in models:
-            self.harakat_combo.addItem("📝 " + m, m)
+            self.harakat_combo.addItem(m, m)
         current_harakat = self.state.translation_harakat_model or self.controller.get_setting(
             "translation.harakat_model", ""
         )
@@ -104,7 +106,7 @@ class Step6Translation(WizardStep):
         self.judge_combo = QComboBox()
         self.judge_combo.addItem("  (use summarization model)", "")
         for m in models:
-            self.judge_combo.addItem("📝 " + m, m)
+            self.judge_combo.addItem(m, m)
         current_judge = self.state.translation_judge_model or self.controller.get_setting(
             "translation.judge_model", ""
         )

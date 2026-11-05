@@ -27,6 +27,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ui_qt.components.icons import icon
 from ui_qt.components.llamacpp_config import LlamaCppConfigMixin
 from ui_qt.components.simple_worker import SimpleWorker
 from ui_qt.theme import rgba, theme_manager
@@ -100,8 +101,11 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
         arch_lay.addWidget(arch_desc_top)
 
         self.arch_combo = QComboBox()
-        self.arch_combo.addItem("🏠  Local model (on your GPU)", "local")
-        self.arch_combo.addItem("☁️  Cloud API model", "cloud")
+        # V0.7.2 (wizard rework ④, D9): the emoji prefixes are gone from
+        # the control labels — professional icons on the buttons, plain
+        # text on the combo items.
+        self.arch_combo.addItem("Local model (on your GPU)", "local")
+        self.arch_combo.addItem("Cloud API model", "cloud")
         _saved_provider = (
             (self.controller.get_setting("summarisation.provider", "llamacpp") or "llamacpp")
             .strip()
@@ -136,7 +140,7 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
         host_lay.addWidget(arch_box)
 
         # ── Local configuration box (local runs) ───────────────────────
-        self.local_box = QGroupBox("🏠 Local configuration")
+        self.local_box = QGroupBox("Local configuration")
         local_lay = QVBoxLayout(self.local_box)
         local_lay.setContentsMargins(10, 10, 10, 8)
         local_lay.setSpacing(6)
@@ -198,8 +202,11 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
         # Refresh button
         refresh_row = QHBoxLayout()
         refresh_row.setSpacing(8)
-        self.refresh_btn = QPushButton("  🔄 Refresh models")
+        self.refresh_btn = QPushButton("Refresh models")
         self.refresh_btn.setObjectName("Secondary")
+        # D9: the professional glyph replaces the emoji prefix (the icon
+        # tint rides the palette — the M1 de-hardcode census).
+        self.refresh_btn.setIcon(icon("refresh", color=theme_manager.palette.text_primary, size=16))
         self.refresh_btn.setCursor(Qt.PointingHandCursor)
         self.refresh_btn.clicked.connect(self._refresh_models)
         refresh_row.addWidget(self.refresh_btn)
@@ -220,7 +227,7 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
         host_lay.addWidget(self.local_box)
 
         # ── Cloud API configuration box (cloud runs) ───────────────────
-        self.heavy_api_box = QGroupBox("☁️ Cloud API configuration (the model)")
+        self.heavy_api_box = QGroupBox("Cloud API configuration (the model)")
         heavy_api_lay = QVBoxLayout(self.heavy_api_box)
         heavy_api_lay.setContentsMargins(10, 10, 10, 8)
         heavy_api_lay.setSpacing(6)
@@ -290,8 +297,10 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
 
         test_row = QHBoxLayout()
         test_row.setSpacing(8)
-        self.cloud_test_btn = QPushButton("🔌  Test connection")
+        self.cloud_test_btn = QPushButton("Test connection")
         self.cloud_test_btn.setObjectName("Secondary")
+        # D9: the plug glyph replaces the 🔌 emoji prefix.
+        self.cloud_test_btn.setIcon(icon("plug", color=theme_manager.palette.text_primary, size=16))
         self.cloud_test_btn.setCursor(Qt.PointingHandCursor)
         self.cloud_test_btn.setToolTip(
             "Send a tiny request to verify the base URL, key, and model work."
@@ -498,7 +507,7 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
             combo.clear()
             combo.addItem("  (use default)", "")
             for m in models:
-                combo.addItem("📝 " + m, m)
+                combo.addItem(m, m)
             if current:
                 idx = combo.findData(current)
                 if idx >= 0:
@@ -536,13 +545,13 @@ class Step5Models(LlamaCppConfigMixin, WizardStep):
         # Run-location description
         descs = {
             "local": (
-                "🏠 Local: the ONE model runs on your GPU via Ollama, "
+                "Local: the ONE model runs on your GPU via Ollama, "
                 "llama.cpp, or LM Studio — it handles summarisation, concept "
                 "extraction, gap-fill, judging, everything. Free, private, "
                 "no API key."
             ),
             "cloud": (
-                "☁️ Cloud: the ONE model runs on an OpenAI-compatible API "
+                "Cloud: the ONE model runs on an OpenAI-compatible API "
                 "(OpenRouter, OpenAI, 9Router, Groq…) — it handles every "
                 "task. No GPU needed, pay per token."
             ),

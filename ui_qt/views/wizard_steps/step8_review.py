@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 # registry — it can never drift from the output list again (the audit
 # found 9-10 newer outputs silently omitted here, §3 B8).
 from core.outputs.registry import selected_output_names
+from ui_qt.components.icons import icon
 from ui_qt.theme import theme_manager
 from ui_qt.views.wizard_steps.shared import WizardStep
 
@@ -48,7 +49,9 @@ class Step8Review(WizardStep):
         lay.setSpacing(10)
 
         warning = QLabel(
-            "⚠️ Conversion is resource and time intensive. Please review every category below before clicking Start."
+            # V0.7.2 (wizard rework ④, D9): no emoji on control labels —
+            # the plain warning text carries itself.
+            "Conversion is resource and time intensive. Please review every category below before clicking Start."
         )
         warning.setObjectName("Caption")
         warning.setWordWrap(True)
@@ -114,8 +117,13 @@ class Step8Review(WizardStep):
         action_row.addWidget(self.post_action_combo, 1)
         lay.addLayout(action_row)
 
-        self.start_btn = QPushButton("  🚀  Start Conversion")
+        self.start_btn = QPushButton("Start Conversion")
         self.start_btn.setObjectName("Primary")
+        # V0.7.2 (wizard rework ④, D9): the old rocket-emoji prefix becomes
+        # the professional rocket glyph; the tint rides the palette's
+        # on-accent token (the V0.7.1 palette-token lesson — never a
+        # hardcoded literal).
+        self.start_btn.setIcon(icon("rocket", color=theme_manager.palette.text_on_accent, size=18))
         self.start_btn.setMinimumHeight(34)  # V7.4.0: was 40
         self.start_btn.setCursor(Qt.PointingHandCursor)
         self.start_btn.clicked.connect(self.start_requested.emit)
@@ -127,13 +135,13 @@ class Step8Review(WizardStep):
         lines = []
 
         # PDF & Document
-        lines.append("<b>📄 PDF & Document</b>")
+        lines.append("<b>PDF & Document</b>")
         lines.append(f"  File: {Path(s.input_path).name if s.input_path else '(none)'}")
         lines.append(f"  Type: {s.source_type}")
         lines.append("")
 
         # Range
-        lines.append("<b>📐 Page Range</b>")
+        lines.append("<b>Page Range</b>")
         if s.page_range_start is None:
             lines.append("  Pages: all")
         else:
@@ -145,7 +153,7 @@ class Step8Review(WizardStep):
         lines.append("")
 
         # OCR
-        lines.append("<b>🔍 OCR</b>")
+        lines.append("<b>OCR</b>")
         lines.append(f"  LLM OCR: {'yes' if s.use_llm_ocr else 'no'}")
         lines.append(f"  PaddleOCR fallback: {'yes' if s.use_paddleocr else 'no'}")
         lines.append(f"  Extract figures: {'yes' if s.extract_figure_text else 'no'}")
@@ -154,7 +162,7 @@ class Step8Review(WizardStep):
         lines.append("")
 
         # Outputs
-        lines.append("<b>📤 Outputs</b>")
+        lines.append("<b>Outputs</b>")
         # V0.7.2 (wizard rework ④, B8): registry-driven — every
         # non-deprecated selected output appears here (previously
         # packets/qa/glossary/evidence/epub/compact… were silently
@@ -165,14 +173,14 @@ class Step8Review(WizardStep):
         lines.append("")
 
         # Models
-        lines.append("<b>🤖 Models</b>")
+        lines.append("<b>Models</b>")
         lines.append(f"  Summarization: {s.summarisation_model or '(default)'}")
         lines.append(f"  OCR: {s.primary_ocr_model or '(default)'}")
         lines.append(f"  Workers: {s.max_workers}, Temperature: {s.temperature}")
         lines.append("")
 
         # Translation
-        lines.append("<b>🌐 Translation</b>")
+        lines.append("<b>Translation</b>")
         if s.translation_enabled:
             lines.append("  Status: ENABLED")
             lines.append(f"  Backend: {s.translation_backend}")
@@ -186,7 +194,7 @@ class Step8Review(WizardStep):
         lines.append("")
 
         # Advanced
-        lines.append("<b>⚙️ Advanced</b>")
+        lines.append("<b>Advanced</b>")
         lines.append(f"  Segmentation: {s.segment_strategy} (tokens: {s.token_limit})")
         lines.append(f"  Semantic: {'yes' if s.enable_semantic else 'no'}")
         lines.append(f"  Academic rigor: {'yes' if s.academic_rigor else 'no'}")
@@ -194,7 +202,7 @@ class Step8Review(WizardStep):
         lines.append("")
 
         # Fine-tuning
-        lines.append("<b>🔧 Fine-tuning</b>")
+        lines.append("<b>Fine-tuning</b>")
         lines.append(f"  Clean markdown: {'yes' if s.clean_markdown else 'no'}")
         lines.append(f"  Fix missing spaces: {'yes' if s.fix_missing_spaces else 'no'}")
         lines.append(f"  Token saver: {'yes' if s.token_saver else 'no'}")
