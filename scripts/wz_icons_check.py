@@ -1,19 +1,20 @@
-"""Wizard document-type PNG icon verification — real offscreen render.
+"""Wizard mode-card PNG icon verification — real offscreen render.
 
 Usage (from repo root):
   .venv/bin/python scripts/wz_icons_check.py [--out FILE]
 
-Checks (Phase WZ-R1, the icon-swap task):
-  1. Every preset key's PNG loads via ``load_png_icon`` (non-null pixmap,
-     64×64 target, from assets/icons/{key}.png — the real app path).
+Checks (Phase WZ-R1, the icon-swap task; V0.7.0: updated to the 3
+reading-mode cards — Digital/Scanned/Auto):
+  1. Every artwork PNG loads via ``load_png_icon`` (non-null pixmap,
+     64×64 target, from assets/icons/{name}.png — the real app path).
   2. The PNG pixmap is NOT the SVG fallback (different pixel content than
      the Lucide line icon rendered at the same size).
   3. Step1Pdf (the real wizard step 1, real TypeCard widgets, real theme)
      renders with the PNG artwork visible — grabbed to a PNG for eyeball
      evidence, both unselected and with a card selected.
 
-Runs fully offscreen (QT_QPA_PLATFORM=offscreen); HOME is isolated so the
-profiles machinery never touches the real user dir.
+Runs fully offscreen (QT_QPA_PLATFORM=offscreen); HOME is isolated so
+nothing touches the real user dir.
 """
 
 from __future__ import annotations
@@ -58,16 +59,14 @@ def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("Elixir")
 
-    # ── Check 1+2: every preset PNG loads and differs from the SVG ──────
+    # ── Check 1+2: every artwork PNG loads and differs from the SVG ──────
     from ui_qt.components.icons import load_png_icon, pixmap
 
+    # (mode-card artwork, preset-SVG fallback name) — V0.7.0 item 2c.
     keys = [
-        ("normal_book", "book"),
-        ("academic_paper", "file-text"),
-        ("visual_catalogue", "newspaper"),
-        ("infographics_slides", "image"),
-        ("full_ocr", "scan"),
-        ("mixed", "layers"),
+        ("normal_book", "book"),  # Digital
+        ("full_ocr", "scan"),  # Scanned
+        ("mixed", "layers"),  # Auto
     ]
     failures: list[str] = []
     for key, svg in keys:
@@ -80,7 +79,7 @@ def main() -> int:
             failures.append(f"{key}: PNG pixel-identical to SVG fallback (suspicious)")
     print(
         "PNG load check:",
-        "FAIL " + "; ".join(failures) if failures else "OK (6/6 load, none equal SVG)",
+        "FAIL " + "; ".join(failures) if failures else "OK (3/3 load, none equal SVG)",
     )
 
     # ── Check 3: real Step1Pdf render ────────────────────────────────────
@@ -94,23 +93,24 @@ def main() -> int:
     step.show()
     app.processEvents()
 
-    # Verify each TypeCard's icon label actually holds a non-null pixmap.
+    # Verify each mode card's icon label actually holds a non-null pixmap.
+    # (mode key → artwork png name; the card dict is keyed by MODE.)
     card_issues = []
-    for key, _svg in keys:
-        tc = step._type_cards.get(key)
+    for mode, png in (("digital", "normal_book"), ("scanned", "full_ocr"), ("auto", "mixed")):
+        tc = step._type_cards.get(mode)
         if tc is None:
-            card_issues.append(f"{key}: no TypeCard built")
+            card_issues.append(f"{mode}: no TypeCard built")
             continue
         pm = tc.icon_label.pixmap()
         if pm is None or pm.isNull():
-            card_issues.append(f"{key}: icon label pixmap null")
+            card_issues.append(f"{mode}: icon label pixmap null ({png}.png)")
     print(
         "TypeCard pixmap check:",
-        "FAIL " + "; ".join(card_issues) if card_issues else "OK (6/6 labels hold pixmaps)",
+        "FAIL " + "; ".join(card_issues) if card_issues else "OK (3/3 labels hold pixmaps)",
     )
 
     # Select a card (the full-select path: colors + icon refresh).
-    step._type_cards["academic_paper"].set_selected(True)
+    step._type_cards["scanned"].set_selected(True)
     app.processEvents()
 
     grab = step.grab()

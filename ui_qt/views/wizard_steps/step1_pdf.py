@@ -1,10 +1,26 @@
-"""Step 1: PDF Selection + Document Type — Step1Pdf (V18.20.4.6, P5 / O-b1 split).
+"""Step 1: PDF Selection + Reading Mode — Step1Pdf.
 
-Moved VERBATIM from ui_qt/views/wizard_view.py (one module per
-wizard step): the class body below is byte-identical to the
-pre-split definition — only this module's top-of-file imports
-differ. ``ui_qt.views.wizard_view`` re-exports Step1Pdf
-(back-compat facade).
+V0.7.0 (wizard rework ②, item 2c — D1-D3): the six document-type cards
+collapse into THREE honest mode cards — Digital / Scanned / Auto
+("Recommended", the default). All 10 steps keep their identity (D1);
+the modes replace the 6-preset surface, not the pipeline:
+
+- **Digital** (assets/icons/normal_book.png): today's pipeline with
+  figure-text + table extraction ON — honest copy: charts on text pages
+  are EXTRACTED, not re-OCR'd (audit §W2: both extractors are real but
+  page-level-blind and opt-in today).
+- **Scanned** (assets/icons/full_ocr.png): every page through the
+  dedicated vision-OCR engine set (D2). Copy promises READING the pages,
+  not describing imagery (audit §6.1 — no description pass exists).
+- **Auto** (assets/icons/mixed.png, "Recommended", default): today's
+  always-on page-level detection + this step's detector banner.
+
+The content-type detector (V9.1.0) stays: its banner now applies
+``source_type`` (the content-preset axis) while the mode cards own
+``ocr_mode`` (the reading axis) — the two no longer clobber each other.
+
+The V7.5.0 configuration-profiles box is retired (D4, item 2e); with 3
+cards and no profiles box the step fits its viewport (B10 closed).
 """
 
 from __future__ import annotations
@@ -26,8 +42,7 @@ from PySide6.QtWidgets import (
 
 from ui_qt.components.simple_worker import SimpleWorker
 from ui_qt.components.type_card import TypeCard
-from ui_qt.settings.presets import PRESETS
-from ui_qt.theme import theme_manager
+from ui_qt.theme import FONT, WEIGHT, theme_manager
 from ui_qt.views.wizard_steps.shared import WizardStep
 
 # V18.20.3.12 (F821) pattern, carried with the class: the
@@ -36,12 +51,55 @@ from ui_qt.views.wizard_steps.shared import WizardStep
 logger = logging.getLogger(__name__)
 
 # ════════════════════════════════════════════════════════════════════════════
-# Step 1: PDF Selection + Document Type
+# Step 1: PDF Selection + Reading Mode
 # ════════════════════════════════════════════════════════════════════════════
+
+# V0.7.0 (item 2c, D1-D3): the three mode cards. ``png`` is the artwork
+# under assets/icons/; ``icon`` is the SVG fallback name (the TypeCard
+# contract). Copy is transcription-truthful per the audit (§6.1/§W2).
+_MODE_CARDS: dict[str, dict[str, str | bool]] = {
+    "digital": {
+        "title": "Digital",
+        "icon": "book",
+        "png": "normal_book",
+        "subtitle": (
+            "Text-based PDF. Charts and tables on text pages are extracted, not re-OCR'd."
+        ),
+        "tooltip": (
+            "The fast path: the PDF's own text layer, plus figure-text "
+            "and table extraction for charts on text pages. No page is "
+            "re-OCR'd."
+        ),
+        "recommended": False,
+    },
+    "scanned": {
+        "title": "Scanned",
+        "icon": "scan",
+        "png": "full_ocr",
+        "subtitle": ("Every page is read by the vision-OCR engine. For scans and photos of text."),
+        "tooltip": (
+            "Every page goes through the dedicated vision-OCR engine set "
+            "(your vision model, then the OCR model, then OlmOCR/Qwen VL "
+            "— never Tesseract). Slowest, most thorough."
+        ),
+        "recommended": False,
+    },
+    "auto": {
+        "title": "Auto",
+        "icon": "layers",
+        "png": "mixed",
+        "subtitle": "I detect which pages need OCR and read only those.",
+        "tooltip": (
+            "Recommended. I scan every page and OCR only the ones that "
+            "need it, with the best available engine."
+        ),
+        "recommended": True,
+    },
+}
 
 
 class Step1Pdf(WizardStep):
-    """PDF file selection + document type preset cards."""
+    """PDF file selection + the 3 reading-mode cards (V0.7.0)."""
 
     # V0.7.0 (item 2b): the numbered StepHeader grammar — the base
     # class inserts the badge+title+caption above the built content.
@@ -68,32 +126,59 @@ class Step1Pdf(WizardStep):
         pdf_lay.addWidget(self.browse_btn)
         lay.addWidget(pdf_box)
 
-        # Document type cards
-        type_label = QLabel("Document type")
+        # Reading-mode cards (V0.7.0 item 2c: 6 type cards → 3 modes)
+        type_label = QLabel("How should I read this PDF?")
         type_label.setObjectName("H3")
         lay.addWidget(type_label)
+
+        # The detector banner sits between the label and the cards
+        # (V9.1.0 banner, kept for Auto; pre-created hidden so there is
+        # no insert-index math).
+        self._detection_label = QLabel("")
+        self._detection_label.setObjectName("Caption")
+        self._detection_label.setWordWrap(True)
+        self._detection_label.hide()
+        lay.addWidget(self._detection_label)
 
         grid = QGridLayout()
         grid.setSpacing(8)
         self._type_cards: dict[str, TypeCard] = {}
-        for i, (key, preset) in enumerate(PRESETS.items()):
+        for i, (key, spec) in enumerate(_MODE_CARDS.items()):
+            cell = QVBoxLayout()
+            cell.setSpacing(3)
+            # Every cell carries the badge row (fixed height) so the
+            # three cards stay pixel-aligned; only the recommended card
+            # shows the pill.
+            badge = QLabel("RECOMMENDED" if spec["recommended"] else "")
+            badge.setFixedHeight(16)
+            badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            if spec["recommended"]:
+                p = theme_manager.palette
+                badge.setStyleSheet(
+                    f"color: {p.accent}; background: {p.accent_soft};"
+                    f" border-radius: 7px; padding: 1px 10px;"
+                    f" font-size: {FONT.micro}px; font-weight: {WEIGHT.semibold};"
+                    f" letter-spacing: 0.6px;"
+                )
+            cell.addWidget(badge)
             tc = TypeCard(
                 value=key,
-                icon_name=preset["icon"],
-                title=preset["label"],
-                subtitle=preset["subtitle"],
-                png_name=key,
+                icon_name=str(spec["icon"]),
+                title=str(spec["title"]),
+                subtitle=str(spec["subtitle"]),
+                png_name=str(spec["png"]),
             )
-            tc.selected.connect(self._on_type_selected)
+            tc.setToolTip(str(spec["tooltip"]))
+            tc.selected.connect(self._on_mode_selected)
             self._type_cards[key] = tc
-            grid.addWidget(tc, i // 3, i % 3)
+            cell.addWidget(tc)
+            grid.addLayout(cell, 0, i)
         lay.addLayout(grid)
 
         lay.addStretch()
 
-        # Select current source_type
-        if self.state.source_type in self._type_cards:
-            self._type_cards[self.state.source_type].set_selected(True)
+        # Restore the persisted mode (default auto → the Auto card).
+        self._type_cards.get(self.state.ocr_mode, self._type_cards["auto"]).set_selected(True)
         if self.state.input_path:
             self.pdf_edit.setText(self.state.input_path)
 
@@ -110,10 +195,10 @@ class Step1Pdf(WizardStep):
 
     def _auto_detect_content_type(self, pdf_path: str) -> None:
         """V9.1.0: Run the deterministic content detector on a quick text
-        sample from the PDF, then suggest the optimal preset to the user.
+        sample from the PDF, then suggest the optimal content preset.
 
         Runs in a background thread so the UI doesn't freeze while the PDF
-        is being sampled.  Shows a suggestion banner above the type cards.
+        is being sampled.  Shows a suggestion banner above the mode cards.
         """
 
         def _detect():
@@ -166,15 +251,7 @@ class Step1Pdf(WizardStep):
             return
 
         p = theme_manager.palette
-
-        # Create or update the suggestion label
-        if not hasattr(self, "_detection_label"):
-            self._detection_label = QLabel("")
-            self._detection_label.setObjectName("Caption")
-            self._detection_label.setWordWrap(True)
-            # Insert it above the type cards grid (find the grid layout's parent)
-            # For simplicity, add it to the main layout before the grid
-            self.layout().insertWidget(3, self._detection_label)
+        self._detection_label.show()
 
         if result.recommended and result.content_type != "normal_book":
             self._detection_label.setText(
@@ -200,41 +277,44 @@ class Step1Pdf(WizardStep):
             )
 
     def _apply_detection(self, result) -> None:
-        """Apply the detected content type to the wizard state + type cards."""
-        if result.content_type in self._type_cards:
-            # Deselect all, then select the detected one
-            for card in self._type_cards.values():
-                card.set_selected(False)
-            self._type_cards[result.content_type].set_selected(True)
-            self._on_type_selected(result.content_type)
-            self._detection_label.setText(
-                f"✅ Applied <b>{result.label()}</b> preset — "
-                f"settings optimized for this content type."
-            )
-            p = theme_manager.palette
-            self._detection_label.setStyleSheet(
-                f"color: {p.success}; background: transparent; font-size: 11px; padding: 4px;"
-            )
+        """Apply the detected content type to the wizard state.
 
-    def _on_type_selected(self, value: str) -> None:
-        self.state.source_type = value
-        # Apply preset settings
-        preset = PRESETS.get(value, {})
-        for sk, sv in preset.get("settings", {}).items():
-            if sk == "ocr.timeout":
-                self.state.ocr_timeout = sv
-            elif sk == "is_academic":
-                pass  # handled by source_type
-            elif sk == "ocr.force_ocr_all_pages":
-                self.state.force_ocr_all_pages = sv
-            elif sk == "advanced.extract_tables":
-                self.state.extract_tables = sv
-            elif sk == "advanced.extract_figure_text":
-                self.state.extract_figure_text = sv
-            elif sk == "segmentation.strategy":
-                self.state.segment_strategy = sv
-            elif sk == "segmentation.token_limit":
-                self.state.token_limit = sv
+        V0.7.0 (item 2c): the 6 type cards are gone — the detector owns
+        ``source_type`` (the content-preset axis: prompts, segmentation
+        defaults), the mode cards own ``ocr_mode`` (the reading axis).
+        The two no longer clobber each other.
+        """
+        self.state.source_type = result.content_type
+        self._detection_label.setText(
+            f"✅ Applied <b>{result.label()}</b> content preset — "
+            f"prompts and defaults optimized for this content type."
+        )
+        p = theme_manager.palette
+        self._detection_label.setStyleSheet(
+            f"color: {p.success}; background: transparent; font-size: 11px; padding: 4px;"
+        )
+
+    def _on_mode_selected(self, value: str) -> None:
+        """Apply a mode card (V0.7.0 item 2c, D1-D3).
+
+        The card sets the OCR mode + its honest defaults. ``source_type``
+        is NOT touched — content detection (the banner) and the settings
+        own it; the reading mode and the content type are orthogonal axes.
+        """
+        self.state.ocr_mode = value
+        # The legacy alias never fights an explicit card choice.
+        self.state.force_ocr_all_pages = False
+        if value == "digital":
+            # The Digital card's promise: figure-text + table extraction ON
+            # (audit §W2 — both real, page-level-blind, opt-in today).
+            self.state.extract_figure_text = True
+            self.state.extract_tables = True
+        elif value == "scanned":
+            # Figure/table extraction is a digital-page feature — every
+            # page is already fully read by the vision engine here.
+            self.state.extract_figure_text = False
+            self.state.extract_tables = False
+        # auto: leave the Step-3 extract toggles as-is (today's behavior).
         # Update card selection (exclusive)
         for k, tc in self._type_cards.items():
             if k != value:
