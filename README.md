@@ -12,7 +12,7 @@ Runs locally on Windows 10/11 with **Python 3.12 + PySide6 6.11**. Supports loca
 >
 > ℹ️ The [`markitdown`](https://github.com/microsoft/markitdown) *Python library* (Microsoft's PDF-extraction engine, used internally) keeps its name — it's a dependency, not the app.
 
-![Version](https://img.shields.io/badge/version-0.6.69-green) ![Python](https://img.shields.io/badge/python-3.12-blue) ![Qt](https://img.shields.io/badge/GUI-PySide6%206.11-green) ![Tests](https://img.shields.io/badge/tests-8618%20passed%20%2F%2018%20failed%20(%200%20new%20)-yellow) ![Privacy](https://img.shields.io/badge/privacy-local--first-orange)
+![Version](https://img.shields.io/badge/version-0.7.6-green) ![Python](https://img.shields.io/badge/python-3.12-blue) ![Qt](https://img.shields.io/badge/GUI-PySide6%206.11-green) ![Tests](https://img.shields.io/badge/tests-9262%20passed%20%2F%200%20failed-brightgreen) ![Privacy](https://img.shields.io/badge/privacy-local--first-orange)
 
 ---
 
@@ -24,7 +24,7 @@ Runs locally on Windows 10/11 with **Python 3.12 + PySide6 6.11**. Supports loca
 - 🎙️ **Podcast-ready** — 2-host podcast scripts *and* TTS audio (NeuTTS/Kokoro for English, Coqui XTTS v2 for Farsi; V0.6.64: Piper removed).
 - 🌐 **Bilingual** — full English ↔ Farsi translation pipeline (NLLB-200 or TranslateGemma).
 - 🖥️ **VRAM-aware** — estimates context windows and VRAM budgets from your actual GPU, and (as of V18.20.4.10) **fails fast** instead of warn-and-continue when a model won't fit.
-- 🧪 **5,400+ passing tests** — a characterization-test safety net pins every behavior before refactors touch it, including 124 Hypothesis property tests.
+- 🧪 **9,200+ passing tests** — a characterization-test safety net pins every behavior before refactors touch it, including 124 Hypothesis property tests.
 
 ---
 
