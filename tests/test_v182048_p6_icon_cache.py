@@ -139,8 +139,7 @@ class TestOb6IconCachePins:
             for n in ast.walk(fn)
             if isinstance(n, ast.Assign)
             and isinstance(n.value, ast.Tuple)
-            and [ast.unparse(e) for e in n.value.elts]
-            == ["name", "color", "size", "stroke"]
+            and [ast.unparse(e) for e in n.value.elts] == ["name", "color", "size", "stroke"]
         ]
         assert keys, "key = (name, color, size, stroke) tuple must be built"
         # every return path yields a QIcon (cached or freshly built)

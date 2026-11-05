@@ -474,7 +474,9 @@ class TtsEnginesSection(QGroupBox):
         self.neutts_dot = QLabel("●")
         self.neutts_dot.setFixedSize(20, 20)
         self.neutts_dot.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.neutts_dot.setStyleSheet(f"font-size: 20px; color: {theme_manager.palette.text_muted};")
+        self.neutts_dot.setStyleSheet(
+            f"font-size: 20px; color: {theme_manager.palette.text_muted};"
+        )
         conn_row.addWidget(self.neutts_dot)
         self.neutts_label = QLabel("NeuTTS-Air")
         conn_row.addWidget(self.neutts_label)
@@ -485,7 +487,9 @@ class TtsEnginesSection(QGroupBox):
         self.kokoro_dot = QLabel("●")
         self.kokoro_dot.setFixedSize(20, 20)
         self.kokoro_dot.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.kokoro_dot.setStyleSheet(f"font-size: 20px; color: {theme_manager.palette.text_muted};")
+        self.kokoro_dot.setStyleSheet(
+            f"font-size: 20px; color: {theme_manager.palette.text_muted};"
+        )
         conn_row.addWidget(self.kokoro_dot)
         self.kokoro_label = QLabel("Kokoro")
         conn_row.addWidget(self.kokoro_label)

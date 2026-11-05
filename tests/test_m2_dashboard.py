@@ -332,9 +332,9 @@ class TestHeaderReduction:
         # Round-5 §5: the truthful state model drives the left side
         assert "from core.system import backend_connection" in _src(_APP)
         assert "def set_backend_state" in code
-        assert 'backend_connection.CHECKING' in code
+        assert "backend_connection.CHECKING" in code
         assert '"Ready"' not in _strip_comments(_src(_APP)).replace(
-            '"Conversion finished — Ready"', ''
+            '"Conversion finished — Ready"', ""
         ), "no hardcoded Ready anywhere"
         # the strip's initial word is CHECKING, never Ready
         assert "self.set_backend_state(backend_connection.CHECKING" in code
@@ -366,7 +366,14 @@ class TestNavigationFacade:
     def test_window_facade_and_stack_pages(self):
         code = _strip_comments(_src(_APP))
         assert "def switch_to_page(self, key: str) -> bool:" in code
-        for key in ("home", "convert", "queue", "output_scanner", "quarantine", "hallucination_audit"):
+        for key in (
+            "home",
+            "convert",
+            "queue",
+            "output_scanner",
+            "quarantine",
+            "hallucination_audit",
+        ):
             assert f'_add_page("{key}"' in code, f"stack page {key!r} not registered"
 
     def test_page_open_hooks_preserved(self):

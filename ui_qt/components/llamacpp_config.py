@@ -168,7 +168,9 @@ class LlamaCppConfigMixin:
         )
         hint.setObjectName("Caption")
         hint.setWordWrap(True)
-        hint.setStyleSheet(f"color: {theme_manager.palette.text_secondary}; font-size: 10px; padding: 2px 0;")
+        hint.setStyleSheet(
+            f"color: {theme_manager.palette.text_secondary}; font-size: 10px; padding: 2px 0;"
+        )
         lay.addWidget(hint)
         return w
 

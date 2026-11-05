@@ -233,7 +233,9 @@ class TokenCostDialog(QDialog):
                 if len(titles) > 3:
                     titles_str += f"  ·  (+{len(titles) - 3} more)"
                 titles_label = QLabel(f"<i>{titles_str}</i>")
-                titles_label.setStyleSheet(f"color: {theme_manager.palette.text_secondary}; font-size: 10px; padding: 4px 8px;")
+                titles_label.setStyleSheet(
+                    f"color: {theme_manager.palette.text_secondary}; font-size: 10px; padding: 4px 8px;"
+                )
                 titles_label.setWordWrap(True)
                 titles_label.setAlignment(Qt.AlignCenter)
                 lay.addWidget(titles_label)
@@ -385,9 +387,7 @@ class TokenCostDialog(QDialog):
                 "this may cost significant tokens. Proceed with caution."
             )
             # M1 de-hardcode: orange literal → warning token.
-            warning.setStyleSheet(
-                f"color: {theme_manager.palette.warning}; font-size: 11px;"
-            )
+            warning.setStyleSheet(f"color: {theme_manager.palette.warning}; font-size: 11px;")
             warning.setWordWrap(True)
             lay.addWidget(warning)
 

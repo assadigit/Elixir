@@ -203,7 +203,9 @@ class OutputSegmentationSection(QGroupBox):
         }
         self.strat_desc_label = QLabel(_STRAT_DESC.get(self.strategy_combo.currentText(), ""))
         self.strat_desc_label.setWordWrap(True)
-        self.strat_desc_label.setStyleSheet(f"color: {theme_manager.palette.text_secondary}; font-size: 11px; padding: 2px 0;")
+        self.strat_desc_label.setStyleSheet(
+            f"color: {theme_manager.palette.text_secondary}; font-size: 11px; padding: 2px 0;"
+        )
         f.addRow("", self.strat_desc_label)
         self.strategy_combo.currentTextChanged.connect(
             lambda txt: self.strat_desc_label.setText(_STRAT_DESC.get(txt, ""))

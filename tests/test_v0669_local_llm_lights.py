@@ -518,9 +518,9 @@ class TestV0669AppSourcePins:
         lights (rich mode, forced budget) live in the About & System
         dialog, fed by the same poll loop."""
         assert "_topbar_static_min" not in _APP_SRC, "the measuring ladder is retired (Q3)"
-        _about_src = (
-            _project_root / "ui_qt" / "views" / "about_system_dialog.py"
-        ).read_text(encoding="utf-8")
+        _about_src = (_project_root / "ui_qt" / "views" / "about_system_dialog.py").read_text(
+            encoding="utf-8"
+        )
         assert "build_status_lights" in _about_src
         assert "self.llm_lights.set_budget(1000)" in _about_src
         assert "apply_llm_statuses" in _APP_SRC  # the poll loop feeds both sinks

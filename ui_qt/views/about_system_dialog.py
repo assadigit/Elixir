@@ -115,10 +115,20 @@ _EXPERIMENTAL_TOOLS: tuple[tuple[str, str, str, str], ...] = (
 # only the nine core tools). Hidden \u2260 removed: they live here AND on
 # the full tools page ("View all tools \u2192").
 _MORE_TOOLS: tuple[tuple[str, str, str, str], ...] = (
-    ("merge", "copy", "Merge Books", "Combine summaries + keypoints from multiple book conversions"),
+    (
+        "merge",
+        "copy",
+        "Merge Books",
+        "Combine summaries + keypoints from multiple book conversions",
+    ),
     ("tts_service", "audio-lines", "TTS Service", "Text \u2192 natural speech audio"),
     ("podcast_maker", "mic", "Podcast Maker", "Script \u2192 multi-voice podcast audio"),
-    ("transcribe", "headphones", "Transcribe Service", "Video/audio \u2192 text transcript + summary"),
+    (
+        "transcribe",
+        "headphones",
+        "Transcribe Service",
+        "Video/audio \u2192 text transcript + summary",
+    ),
 )
 
 
@@ -201,9 +211,7 @@ class AboutSystemDialog(QDialog):
             row.addWidget(QLabel(f"<b>{label}</b> — {blurb}"), 1)
             open_btn = QPushButton("Open")
             open_btn.setObjectName("Compact")
-            open_btn.clicked.connect(
-                lambda checked=False, k=page_key: self._open_experimental(k)
-            )
+            open_btn.clicked.connect(lambda checked=False, k=page_key: self._open_experimental(k))
             row.addWidget(open_btn)
             el.addLayout(row)
         root.addWidget(exp_gb)
@@ -230,9 +238,7 @@ class AboutSystemDialog(QDialog):
             row.addWidget(QLabel(f"<b>{label}</b> — {blurb}"), 1)
             open_btn = QPushButton("Open")
             open_btn.setObjectName("Compact")
-            open_btn.clicked.connect(
-                lambda checked=False, k=tool_key: self.open_tool.emit(k)
-            )
+            open_btn.clicked.connect(lambda checked=False, k=tool_key: self.open_tool.emit(k))
             row.addWidget(open_btn)
             ml.addLayout(row)
         root.addWidget(more_gb)
