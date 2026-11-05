@@ -143,7 +143,6 @@ class Step8Review(WizardStep):
         # OCR
         lines.append("<b>🔍 OCR</b>")
         lines.append(f"  LLM OCR: {'yes' if s.use_llm_ocr else 'no'}")
-        lines.append(f"  Force OCR all pages: {'yes' if s.force_ocr_all_pages else 'no'}")
         lines.append(f"  PaddleOCR fallback: {'yes' if s.use_paddleocr else 'no'}")
         lines.append(f"  Extract figures: {'yes' if s.extract_figure_text else 'no'}")
         lines.append(f"  Extract tables: {'yes' if s.extract_tables else 'no'}")

@@ -45,9 +45,9 @@ class Step3Ocr(WizardStep):
         self.llm_ocr_cb.setChecked(self.state.use_llm_ocr)
         box_lay.addWidget(self.llm_ocr_cb)
 
-        self.force_ocr_cb = QCheckBox("Force OCR on every page (slower, for unreliable text)")
-        self.force_ocr_cb.setChecked(self.state.force_ocr_all_pages)
-        box_lay.addWidget(self.force_ocr_cb)
+        # V0.7.1 (wizard rework ③): the "Force OCR on every page" checkbox is
+        # PURGED with the deprecated full-OCR alias — Step 1's Scanned card
+        # (ocr_mode) owns that meaning since V0.7.0.
 
         self.paddleocr_cb = QCheckBox("Enable PaddleOCR fallback (before Tesseract)")
         self.paddleocr_cb.setChecked(self.state.use_paddleocr)
@@ -75,7 +75,6 @@ class Step3Ocr(WizardStep):
 
     def save_to_state(self) -> None:
         self.state.use_llm_ocr = self.llm_ocr_cb.isChecked()
-        self.state.force_ocr_all_pages = self.force_ocr_cb.isChecked()
         self.state.use_paddleocr = self.paddleocr_cb.isChecked()
         self.state.extract_figure_text = self.figures_cb.isChecked()
         self.state.extract_tables = self.tables_cb.isChecked()

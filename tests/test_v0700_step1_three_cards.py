@@ -82,7 +82,6 @@ class TestThreeCardsSourcePins:
         assert "self.state.ocr_mode = value" in src
         assert "self.state.source_type = value" not in src
         assert "self.state.extract_figure_text = True" in src  # digital
-        assert "self.state.force_ocr_all_pages = False" in src
 
     def test_detection_applies_source_type_not_cards(self):
         src = _src(_STEP1)
@@ -141,7 +140,6 @@ class TestStep1ThreeCardsOffscreen:
             assert state.ocr_mode == "digital"
             assert state.extract_figure_text is True, "the Digital promise"
             assert state.extract_tables is True
-            assert state.force_ocr_all_pages is False
             assert step._type_cards["digital"].is_selected
             assert not step._type_cards["auto"].is_selected  # exclusive
         finally:

@@ -302,8 +302,6 @@ class Step1Pdf(WizardStep):
         own it; the reading mode and the content type are orthogonal axes.
         """
         self.state.ocr_mode = value
-        # The legacy alias never fights an explicit card choice.
-        self.state.force_ocr_all_pages = False
         if value == "digital":
             # The Digital card's promise: figure-text + table extraction ON
             # (audit §W2 — both real, page-level-blind, opt-in today).

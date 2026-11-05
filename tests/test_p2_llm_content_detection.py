@@ -295,7 +295,6 @@ class TestPresets:
     def test_preset_defaults(self):
         p = get_content_preset("normal_book")
         assert p.recommended_outputs == ["chapter_summaries", "keypoints"]
-        assert p.force_ocr_all_pages is False
 
     def test_catalogue_preset_flags(self):
         p = get_content_preset("catalogue")
@@ -309,9 +308,14 @@ class TestPresets:
         assert p.extract_images is True
         assert p.narrative_filter_strictness == "lenient"
 
-    def test_scanned_preset_forces_ocr(self):
+    def test_scanned_preset_flags(self):
+        # V0.7.1 (wizard rework ③): the dead full-OCR preset field is
+        # purged from ContentPreset (never read by anything); the preset
+        # keeps its other scanned-specific behaviour. The field-absence
+        # pin lives in tests/test_v0710_dead_alias_purged.py.
         p = get_content_preset("scanned_pdf")
-        assert p.force_ocr_all_pages is True
+        assert p.min_segment_tokens == 250
+        assert p.coverage_threshold == 0.75
 
     def test_returned_dict_is_a_copy(self):
         presets = get_all_presets()

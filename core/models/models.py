@@ -239,15 +239,13 @@ class ConversionRequest:
     #   "scanned" : every page through the vision-OCR engine set (D2)
     #   "auto"    : page-level scan detection decides per page (the
     #               previous, and current, default behaviour)
-    # Supersedes the academic-only force_ocr_all_pages gate (B2): that
-    # flag is now a DEPRECATED ALIAS mapped to ocr_mode="scanned" for
-    # one release (extraction.resolve_ocr_mode), then purged.
+    # V0.7.1 (wizard rework ③): the V0.7.0 one-release deprecated
+    # full-OCR alias is purged — ocr_mode is the only reading axis.
     ocr_mode: str = "auto"
     # V18.20.4.11 (P2): literals → core.llm.model_taxonomy constants
     # (values unchanged: "qwen3-vl:8b").
     primary_ocr_model: str = DEFAULT_FALLBACK_OCR_MODEL
     fallback_ocr_model: str = DEFAULT_FALLBACK_OCR_MODEL
-    force_ocr_all_pages: bool = False
     image_max_size: int = 1200
     ocr_retries: int = 2
 

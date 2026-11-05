@@ -978,7 +978,6 @@ class QueueView(QWidget):
             "password": None,
             "use_llm_ocr": self.controller.get_setting("ocr.use_llm", True),
             "ocr_mode": self.controller.get_setting("ocr.mode", "auto"),
-            "force_ocr_all_pages": self.controller.get_setting("ocr.force_ocr_all_pages", False),
             "source_type": self.controller.get_setting("source_type", "normal_book"),
             "include_executive_summary": self.controller.get_setting(
                 "summarisation.include_executive_summary", True

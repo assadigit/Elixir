@@ -1,12 +1,14 @@
 """V0.7.0 (wizard rework ②, item 2d) — the ocr_mode backend pins (D3 + D2).
 
 New ``ConversionRequest.ocr_mode`` (digital / scanned / auto, default
-auto); ``extraction.py`` branches on it; the scanned branch SUPERSEDES
-the academic-only ``force_ocr_all_pages`` gate (B2) — the old flag maps
-to ``ocr_mode="scanned"`` as a deprecated alias for one release. The
-scanned-mode ENGINE SET per D2: vision-capable summarisation model →
-``primary_ocr_model`` → OlmOCR → Qwen VL — Tesseract, PaddleOCR, and the
-local-VLM fallback are EXCLUDED (never constructed, never called).
+auto); ``extraction.py`` branches on it. The scanned branch SUPERSEDED
+the academic-only full-OCR gate (B2): the old flag was mapped to
+``ocr_mode="scanned"`` as a deprecated alias for ONE release (V0.7.0),
+then purged in V0.7.1 (wizard rework ③) — the post-purge contract is
+pinned in tests/test_v0710_dead_alias_purged.py. The scanned-mode ENGINE SET per D2: vision-capable
+summarisation model → ``primary_ocr_model`` → OlmOCR → Qwen VL —
+Tesseract, PaddleOCR, and the local-VLM fallback are EXCLUDED (never
+constructed, never called).
 
 Round-trip pin: WizardState.ocr_mode → to_ui_data → _REQUEST_FIELD_MAP →
 ConversionRequest (the audit's dead-control lesson, §1).
@@ -52,42 +54,17 @@ class TestOcrModeRequestField:
         from core.pipeline.conversion.extraction import resolve_ocr_mode
 
         for mode in ("digital", "scanned", "auto"):
-            req = types.SimpleNamespace(ocr_mode=mode, force_ocr_all_pages=False)
+            req = types.SimpleNamespace(ocr_mode=mode)
             assert resolve_ocr_mode(req) == mode
         # Truly unknown / empty / missing values degrade to auto.
         for bad in ("SCANNED?", "weird", "", None):
-            req = types.SimpleNamespace(ocr_mode=bad, force_ocr_all_pages=False)
+            req = types.SimpleNamespace(ocr_mode=bad)
             assert resolve_ocr_mode(req) == "auto", f"{bad!r} must degrade to auto"
-        req = types.SimpleNamespace(force_ocr_all_pages=False)
+        req = types.SimpleNamespace()
         assert resolve_ocr_mode(req) == "auto"
         # Whitespace + case are normalised into the canonical vocabulary.
-        req = types.SimpleNamespace(ocr_mode="  Digital  ", force_ocr_all_pages=False)
+        req = types.SimpleNamespace(ocr_mode="  Digital  ")
         assert resolve_ocr_mode(req) == "digital"
-
-    def test_deprecated_alias_maps_to_scanned_for_any_source(self):
-        """THE B2 FIX: force_ocr_all_pages honored the all-pages branch only
-        for academic papers (extraction.py:472-490) — the Full-OCR and
-        Infographics presets were silent no-ops on any other source. As a
-        deprecated alias it now maps to scanned for ANY source type."""
-        from core.pipeline.conversion.extraction import resolve_ocr_mode
-
-        for source in ("normal_book", "academic_paper", "visual_catalogue"):
-            req = types.SimpleNamespace(
-                ocr_mode="auto", force_ocr_all_pages=True, source_type=source
-            )
-            assert resolve_ocr_mode(req) == "scanned", (
-                f"B2: the alias must map to scanned for {source}"
-            )
-
-    def test_explicit_mode_wins_over_alias(self):
-        """An explicit digital/scanned choice is never overridden by the
-        legacy flag; the alias only fires from auto."""
-        from core.pipeline.conversion.extraction import resolve_ocr_mode
-
-        req = types.SimpleNamespace(ocr_mode="digital", force_ocr_all_pages=True)
-        assert resolve_ocr_mode(req) == "digital"
-        req = types.SimpleNamespace(ocr_mode="scanned", force_ocr_all_pages=False)
-        assert resolve_ocr_mode(req) == "scanned"
 
 
 # ═══════════════════════════════════════════════════════════════════════════

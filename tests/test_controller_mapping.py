@@ -80,7 +80,8 @@ class _StubController:
         ("use_llm_ocr", "use_llm_ocr", "ocr.use_llm", True, None),
         ("primary_ocr_model", "primary_ocr_model", "ocr.primary_model", "qwen3-vl:8b", None),
         ("fallback_ocr_model", "fallback_ocr_model", "ocr.fallback_model", "qwen3-vl:8b", None),
-        ("force_ocr_all_pages", "force_ocr_all_pages", "ocr.force_ocr_all_pages", False, None),
+        # V0.7.1 (wizard rework ③): the deprecated full-OCR alias's map row
+        # is purged (one release after V0.7.0).
         ("image_max_size", "image_max_size", "ocr.image_max_size", 1200, None),
         ("clean_markdown", "clean_markdown", "postprocess.clean_markdown", True, None),
         ("fix_missing_spaces", "fix_missing_spaces", "postprocess.fix_missing_spaces", False, None),

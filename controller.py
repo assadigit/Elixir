@@ -563,7 +563,6 @@ class Controller:
             "primary_ocr_model": request.primary_ocr_model,
             "fallback_ocr_model": request.fallback_ocr_model,
             "ocr_mode": request.ocr_mode,
-            "force_ocr_all_pages": request.force_ocr_all_pages,
             "image_max_size": request.image_max_size,
             "clean_markdown": request.clean_markdown,
             "fix_missing_spaces": request.fix_missing_spaces,
@@ -699,7 +698,8 @@ class Controller:
         ("use_llm_ocr", "use_llm_ocr", "ocr.use_llm", True, None),
         # V0.7.0 (wizard rework ②, D3): the 3-mode OCR switch round-trips
         # through the map like every other request field (digital/scanned/
-        # auto; supersedes the academic-only force_ocr_all_pages gate, B2).
+        # auto). V0.7.1 (wizard rework ③): the deprecated full-OCR alias's
+        # map row is purged (one release after V0.7.0).
         ("ocr_mode", "ocr_mode", "ocr.mode", "auto", None),
         # V18.20.4.3 (P2 / W-c1): fallback defaults unified with the
         # canonical ``utils/settings.py`` defaults + USER_OLLAMA_MODELS.md
@@ -720,7 +720,6 @@ class Controller:
             "OlmOCR-2-7B-1025-Q4_K_L-bartowski-allenai:latest",
             None,
         ),
-        ("force_ocr_all_pages", "force_ocr_all_pages", "ocr.force_ocr_all_pages", False, None),
         ("image_max_size", "image_max_size", "ocr.image_max_size", 1200, None),
         ("clean_markdown", "clean_markdown", "postprocess.clean_markdown", True, None),
         ("fix_missing_spaces", "fix_missing_spaces", "postprocess.fix_missing_spaces", False, None),

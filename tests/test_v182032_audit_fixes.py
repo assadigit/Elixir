@@ -994,7 +994,6 @@ class TestSettingsBanner:
             input_path=Path("book.pdf"),
             source_type="normal_book",
             use_llm_ocr=True,
-            force_ocr_all_pages=False,
             primary_ocr_model="m",
             ocr_retries=2,
             image_max_size=1200,

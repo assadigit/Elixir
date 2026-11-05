@@ -199,8 +199,9 @@ class Settings:
                 # V0.7.0 (wizard rework ②, D3): the 3-mode OCR switch
                 # (digital / scanned / auto) — the request twin is
                 # ConversionRequest.ocr_mode.
+                # V0.7.1 (wizard rework ③): the V0.7.0 deprecated full-OCR
+                # alias is purged; ocr.mode is the only reading axis.
                 "mode": "auto",
-                "force_ocr_all_pages": False,
                 "image_max_size": 1200,
                 "image_dpi": 300,
                 "unlimited_ocr_path": "",

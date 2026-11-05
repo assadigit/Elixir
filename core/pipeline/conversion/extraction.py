@@ -99,24 +99,17 @@ OCR_MODES = ("digital", "scanned", "auto")
 def resolve_ocr_mode(request: Any) -> str:
     """Resolve the request's effective OCR mode (V0.7.0, D3).
 
-    Resolution order:
-      1. ``request.ocr_mode`` ∈ {digital, scanned, auto} — the new switch
-         (an unknown/empty value degrades to "auto" with a WARNING by the
-         caller-side contract; this pure helper just normalises).
-      2. DEPRECATED ALIAS (one release): ``force_ocr_all_pages=True`` maps
-         to ``"scanned"`` for ANY source type — this is the B2 fix. The
-         old academic-only gate (``source_type == "academic_paper"`` AND
-         the flag) honoured the flag for no other source type, so the
-         Full-OCR / Infographics presets were silent no-ops on digital
-         PDFs (audit §3 B2, extraction.py:472-490).
+    ``request.ocr_mode`` ∈ {digital, scanned, auto} — the one reading
+    axis since V0.7.0 (an unknown/empty value degrades to "auto"; this
+    pure helper just normalises). V0.7.1 (wizard rework ③): the V0.7.0
+    one-release deprecated full-OCR alias is purged — an unknown
+    attribute no longer affects resolution.
 
     Pure function on the request — unit-testable without a converter.
     """
     mode = str(getattr(request, "ocr_mode", "auto") or "auto").strip().lower()
     if mode not in OCR_MODES:
         mode = "auto"
-    if mode == "auto" and getattr(request, "force_ocr_all_pages", False):
-        mode = "scanned"
     return mode
 
 
@@ -499,8 +492,7 @@ def run_extraction(converter: Any) -> ExtractionResult | ConversionResult:
     # will detect garbled text and call _targeted_ocr_repair on just
     # those pages.
     #
-    # V0.7.0 (wizard rework ②, D3): the ocr_mode branch — SUPERSEDES the
-    # academic-only force_ocr_all_pages gate (B2). Resolution via
+    # V0.7.0 (wizard rework ②, D3): the ocr_mode branch. Resolution via
     # resolve_ocr_mode() above; the normalised value is written back onto
     # the request so downstream consumers (OCRService's D2 engine set)
     # read one canonical attribute:
@@ -508,19 +500,14 @@ def run_extraction(converter: Any) -> ExtractionResult | ConversionResult:
     #             set per D2 (vision-capable summarisation model →
     #             primary_ocr_model → OlmOCR → Qwen VL; Tesseract, Paddle,
     #             and the local-VLM fallback EXCLUDED) — for ANY source
-    #             type (the B2 fix; the old gate required academic_paper).
+    #             type (the V0.7.0 B2 fix; the deprecated full-OCR alias
+    #             that carried it is purged as of V0.7.1).
     #   digital → page-level scan detection OFF, figure/table extraction ON
     #             (the Digital card's promise).
     #   auto    → exactly today's behavior (incl. the academic two-stage
     #             log line below).
     request.ocr_mode = _ocr_mode
     if _ocr_mode == "scanned":
-        if getattr(request, "force_ocr_all_pages", False):
-            log(
-                "  📑 force_ocr_all_pages is deprecated — mapped to ocr_mode='scanned' "
-                "(V0.7.0; the flag is purged next release).",
-                "INFO",
-            )
         log(
             "  📑 Scanned mode — every page goes through the vision-OCR "
             "engine set (D2: vision model → primary OCR model → OlmOCR → "

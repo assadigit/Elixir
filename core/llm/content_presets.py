@@ -53,10 +53,11 @@ class ContentPreset:
     # Coverage threshold (how much of the source must be covered)
     coverage_threshold: float = 0.80
 
-    # V8.0.0 #5: Per-preset output + OCR defaults
-    # These control what outputs + OCR behavior the preset recommends.
-    # The wizard can read these to pre-fill the output selection.
-    force_ocr_all_pages: bool = False  # True for scanned/OCR-heavy presets
+    # V8.0.0 #5: Per-preset output defaults. These control what outputs
+    # the preset recommends; the wizard can read these to pre-fill the
+    # output selection. V0.7.1: the dead full-OCR preset flag is purged
+    # (never read by anything — the reading axis is ocr_mode since
+    # V0.7.0).
     extract_images: bool = False  # True for magazine/catalogue — image gallery
     skip_summaries: bool = False  # True for catalogue — summaries aren't useful
     recommended_outputs: list = None  # list of output keys to enable by default
@@ -228,8 +229,8 @@ _SCANNED = ContentPreset(
     min_segment_tokens=250,
     reading_level_target=8,
     coverage_threshold=0.75,  # lower — OCR errors reduce coverage
-    # V8.0.0 #5: scanned-specific behavior
-    force_ocr_all_pages=True,  # force full OCR
+    # V8.0.0 #5: scanned-specific behavior (V0.7.1: the dead full-OCR
+    # flag assignment is purged with the field).
     recommended_outputs=["full_markdown", "chapter_summaries", "keypoints"],
 )
 

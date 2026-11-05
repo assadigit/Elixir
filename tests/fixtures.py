@@ -29,7 +29,6 @@ def make_minimal_request(
         use_llm_ocr=True,
         primary_ocr_model="test-ocr:latest",
         fallback_ocr_model="test-ocr:latest",
-        force_ocr_all_pages=False,
         image_max_size=1200,
         ocr_retries=2,
         clean_markdown=True,

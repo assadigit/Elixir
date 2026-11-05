@@ -117,7 +117,9 @@ def log_conversion_settings(
     # ── OCR ───────────────────────────────────────────────────────────
     log(
         f"  OCR mode: {getattr(r, 'ocr_mode', 'auto')}, "
-        f"LLM OCR: {r.use_llm_ocr}, Force OCR all (deprecated alias): {r.force_ocr_all_pages}",
+        # V0.7.1 (wizard rework ③): the V0.7.0 deprecated full-OCR alias
+        # is purged — ocr_mode (logged on its own line) is the reading axis.
+        f"LLM OCR: {r.use_llm_ocr}",
         "INFO",
     )
     log(f"  Primary OCR model: {r.primary_ocr_model}", "INFO")

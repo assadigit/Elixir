@@ -41,9 +41,9 @@ class WizardState:
     # (computed from the measured page token density by the backend);
     # a positive int is the manual override (the Step-2 spin, 4-25).
     page_group_size: int = 0
-    # Step 3: OCR
+    # Step 3: OCR (V0.7.1: the deprecated full-OCR alias is purged;
+    # ocr_mode, set by Step 1's cards, is the reading axis).
     use_llm_ocr: bool = True
-    force_ocr_all_pages: bool = False
     use_paddleocr: bool = False
     ocr_timeout: int = 120
     extract_figure_text: bool = False
@@ -160,7 +160,6 @@ class WizardState:
             "selected_chapters": self.selected_chapters,
             "page_group_size": self.page_group_size,
             "use_llm_ocr": self.use_llm_ocr,
-            "force_ocr_all_pages": self.force_ocr_all_pages,
             "image_max_size": 1200,
             "extract_tables": self.extract_tables,
             "extract_figure_text": self.extract_figure_text,
