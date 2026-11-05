@@ -482,6 +482,27 @@ _PYPDF_FULL_CP = (
     "64400 32 46"
 )
 
+# V0.7.6: the pypdf 6.21.x extraction of the SAME PDF — identical to the
+# canonical pin except it additionally emits the two glyphs 64511/65251
+# (shaped presentation forms) and the cmap artifact 450 (U+01C2) at the
+# one insertion point (captured live from pypdf 6.21.4 on this rig;
+# the canonical pin above predates it). Both outcomes satisfy the
+# test's intent; any third outcome must fail and be re-pinned.
+_PYPDF_FULL_CP_V621 = (
+    "65245 65166 65255 65166 64400 32 32 65200 65163 65262 65203 32 10 "
+    "65257 65165 65197 32 32 65254 65259 65153 32 32 64509 64401 64510 "
+    "32 32 65199 65165 32 32 65250 65260 65251 32 32 65254 64510 65198 "
+    "65175 32 32 64508 65166 65259 65193 65197 65261 65166 65176 65203 "
+    "65193 32 32 64508 65197 65261 65166 65256 65235 32 32 65197 65193 "
+    "32 32 65253 65198 65239 32 32 65250 65259 65193 65199 65262 65255 "
+    "32 32 64511 65251 32 450 32 64508 65193 1576 32 32 65193 65262 "
+    "65169 32 32 65258 64400 32 32 65198 64511 65204 65251 32 32 65173 "
+    "65197 65166 65184 65175 32 32 65261 32 65198 65236 65203 32 32 "
+    "65165 65197 32 32 65197 65193 32 32 65198 65203 65165 65198 65203 "
+    "32 32 65253 65166 65260 65183 32 10 65253 65262 64404 65198 64404 "
+    "65193 32 32 65193 65198 64400 32 46"
+)
+
 
 def _cp(text: str) -> str:
     """Decode a space-separated codepoint string (ASCII-safe pin storage)."""
@@ -494,7 +515,19 @@ class TestFarsiExtraction:
         NOT round-trip. Both extractors return Arabic PRESENTATION-FORM
         codepoints (U+FB50–U+FDFF / U+FE70–U+FEFF) — not the logical
         U+0600–U+06FF characters — and neither contains the original logical
-        string."""
+        string.
+
+        V0.7.6 pin refresh (pypdf version variance): the exact pypdf
+        string is pinned for BOTH documented extractor behaviours — the
+        canonical form (the pypdf that froze the original pin) and the
+        pypdf 6.21.x form, which extracts two additional glyphs from the
+        same PDF (U+FBFF U+FEE3 — shaped presentation forms) and maps
+        one font glyph to U+01C2 (LATIN LETTER ALVEOLAR CLICK — an
+        artifact of this font's cmap in 6.21.x). The INTENT assertions
+        below hold under both: every Farsi codepoint is a shaped
+        presentation form and the logical sentence never round-trips.
+        A third, undocumented outcome fails the pin and forces a
+        conscious refresh."""
         path = _persian_pdf(tmp_path)
         doc = fitz.open(str(path))
         fitz_text = doc[0].get_text()
@@ -503,7 +536,20 @@ class TestFarsiExtraction:
 
         fitz_line1 = fitz_text.split("\n")[0]
         assert fitz_line1 == _cp(_FITZ_LINE1_CP)
-        assert pypdf_text == _cp(_PYPDF_FULL_CP)
+        assert pypdf_text in (_cp(_PYPDF_FULL_CP), _cp(_PYPDF_FULL_CP_V621))
+
+        # INTENT (holds under every documented extractor outcome): shaped
+        # presentation forms only — plus the two known non-Farsi artifacts
+        # (space/newline/dot separators; pypdf's one logical beh U+0628 in
+        # the canonical pin, and the U+01C2 cmap artifact in 6.21.x) — and
+        # the logical text never round-trips from either extractor.
+        _allowed_non_farsi = set(map(ord, " \n.")) | {0x628, 0x1C2}
+        for ch in pypdf_text:
+            assert (
+                0xFB50 <= ord(ch) <= 0xFDFF
+                or 0xFE70 <= ord(ch) <= 0xFEFF
+                or ord(ch) in _allowed_non_farsi
+            ), f"non-presentation codepoint {hex(ord(ch))} in pypdf text"
 
         sentence = _golden_farsi_sentence()
         for extracted in (fitz_text, pypdf_text):
