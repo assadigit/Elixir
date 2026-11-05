@@ -995,7 +995,6 @@ class TestSettingsBanner:
             source_type="normal_book",
             use_llm_ocr=True,
             force_ocr_all_pages=False,
-            auto_detect_scanned=True,
             primary_ocr_model="m",
             ocr_retries=2,
             image_max_size=1200,

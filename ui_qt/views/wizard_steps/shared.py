@@ -38,7 +38,6 @@ class WizardState:
     page_range_start: int | None = None
     page_range_end: int | None = None
     page_group_size: int = 10
-    auto_detect_scanned: bool = True
     # Step 3: OCR
     use_llm_ocr: bool = True
     force_ocr_all_pages: bool = False
@@ -156,7 +155,6 @@ class WizardState:
             "page_range_end": self.page_range_end,
             "selected_chapters": self.selected_chapters,
             "page_group_size": self.page_group_size,
-            "auto_detect_scanned": self.auto_detect_scanned,
             "use_llm_ocr": self.use_llm_ocr,
             "force_ocr_all_pages": self.force_ocr_all_pages,
             "image_max_size": 1200,

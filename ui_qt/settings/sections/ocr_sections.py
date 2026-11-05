@@ -23,7 +23,7 @@ from .helpers import _get_ollama_models, _populate_models, _refresh_models_async
 
 
 class OcrEngineSection(QGroupBox):
-    """OCR engine toggles + timeout."""
+    """OCR engine toggles + the 3-mode switch + timeout."""
 
     def __init__(self, controller: Controller, parent: QWidget | None = None) -> None:
         super().__init__("OCR engine", parent)
@@ -34,15 +34,30 @@ class OcrEngineSection(QGroupBox):
             checked=controller.get_setting("ocr.use_llm", True),
             tooltip="Use a vision LLM for scanned pages. Tesseract is the fallback.",
         )
-        self.auto_cb = labeled_checkbox(
-            "Auto-detect scanned pages",
-            checked=controller.get_setting("ocr.auto_detect_scanned", True),
-            tooltip="Only OCR pages with little extractable text.",
+        # V0.7.0 (rework ②, D3): the 3-mode switch replaces the dead
+        # auto-detect checkbox (the flag was log-only) and the legacy
+        # force toggle (now a deprecated alias of scanned mode). The
+        # vocabulary matches the wizard's Step-1 mode cards + the presets.
+        self.mode_combo = labeled_combo(
+            [
+                "Auto — detect which pages need OCR",
+                "Digital — text layer only",
+                "Scanned — every page via vision OCR",
+            ],
+            tooltip=(
+                "How the PDF is read.\n\n"
+                "Auto: page-level detection OCRs only the pages that need it "
+                "(recommended).\n"
+                "Digital: trust the text layer; charts/tables on text pages "
+                "are extracted, not re-OCR'd.\n"
+                "Scanned: every page goes through the vision-OCR engine set "
+                "(never Tesseract)."
+            ),
         )
-        self.force_cb = labeled_checkbox(
-            "Force OCR on every page",
-            checked=controller.get_setting("ocr.force_ocr_all_pages", False),
-            tooltip="Run OCR on all pages, even digital ones. Slower.",
+        # labeled_combo selects by display text — the stored value is the
+        # mode word, so the index is set explicitly (auto/digital/scanned).
+        self.mode_combo.setCurrentIndex(
+            self._index_from_mode(controller.get_setting("ocr.mode", "auto"))
         )
         self.paddle_cb = labeled_checkbox(
             "Enable PaddleOCR fallback",
@@ -50,8 +65,7 @@ class OcrEngineSection(QGroupBox):
             tooltip="Try PaddleOCR before Tesseract if the vision model fails.",
         )
         f.addRow(self.llm_cb)
-        f.addRow(self.auto_cb)
-        f.addRow(self.force_cb)
+        f.addRow("OCR mode", self.mode_combo)
         f.addRow(self.paddle_cb)
         self.timeout_combo = labeled_combo(
             ["30", "60", "90", "120", "180"],
@@ -61,19 +75,23 @@ class OcrEngineSection(QGroupBox):
         f.addRow("OCR timeout (s)", self.timeout_combo)
         self.setLayout(f)
 
+    def _mode_from_index(self, idx: int) -> str:
+        return ("auto", "digital", "scanned")[idx] if 0 <= idx <= 2 else "auto"
+
+    def _index_from_mode(self, mode: str) -> int:
+        return {"auto": 0, "digital": 1, "scanned": 2}.get(str(mode), 0)
+
     def save(self) -> None:
         c = self.controller
         c.update_setting("ocr.use_llm", self.llm_cb.isChecked())
-        c.update_setting("ocr.auto_detect_scanned", self.auto_cb.isChecked())
-        c.update_setting("ocr.force_ocr_all_pages", self.force_cb.isChecked())
+        c.update_setting("ocr.mode", self._mode_from_index(self.mode_combo.currentIndex()))
         c.update_setting("ocr.use_paddleocr", self.paddle_cb.isChecked())
         c.update_setting("ocr.timeout", int(self.timeout_combo.currentText()))
 
     def reload(self) -> None:
         c = self.controller
         self.llm_cb.setChecked(c.get_setting("ocr.use_llm", True))
-        self.auto_cb.setChecked(c.get_setting("ocr.auto_detect_scanned", True))
-        self.force_cb.setChecked(c.get_setting("ocr.force_ocr_all_pages", False))
+        self.mode_combo.setCurrentIndex(self._index_from_mode(c.get_setting("ocr.mode", "auto")))
         self.paddle_cb.setChecked(c.get_setting("ocr.use_paddleocr", False))
         to = str(c.get_setting("ocr.timeout", 60))
         idx = self.timeout_combo.findText(to)

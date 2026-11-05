@@ -115,8 +115,11 @@ def log_conversion_settings(
         log(f"  VRAM budget calc failed: {e}", "DEBUG")
 
     # ── OCR ───────────────────────────────────────────────────────────
-    log(f"  LLM OCR: {r.use_llm_ocr}, Force OCR all: {r.force_ocr_all_pages}", "INFO")
-    log(f"  Auto-detect scanned: {r.auto_detect_scanned}", "INFO")
+    log(
+        f"  OCR mode: {getattr(r, 'ocr_mode', 'auto')}, "
+        f"LLM OCR: {r.use_llm_ocr}, Force OCR all (deprecated alias): {r.force_ocr_all_pages}",
+        "INFO",
+    )
     log(f"  Primary OCR model: {r.primary_ocr_model}", "INFO")
     # V18.2.22 (BUG-5): Warn when LLM OCR is enabled but no OCR model is set.
     # The V18.2.20 conversion log showed "Primary OCR model: " (empty string)

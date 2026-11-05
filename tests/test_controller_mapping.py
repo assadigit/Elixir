@@ -80,7 +80,6 @@ class _StubController:
         ("use_llm_ocr", "use_llm_ocr", "ocr.use_llm", True, None),
         ("primary_ocr_model", "primary_ocr_model", "ocr.primary_model", "qwen3-vl:8b", None),
         ("fallback_ocr_model", "fallback_ocr_model", "ocr.fallback_model", "qwen3-vl:8b", None),
-        ("auto_detect_scanned", "auto_detect_scanned", "ocr.auto_detect_scanned", True, None),
         ("force_ocr_all_pages", "force_ocr_all_pages", "ocr.force_ocr_all_pages", False, None),
         ("image_max_size", "image_max_size", "ocr.image_max_size", 1200, None),
         ("clean_markdown", "clean_markdown", "postprocess.clean_markdown", True, None),

@@ -1,12 +1,22 @@
 """Preset definitions for the Presets head group.
 
 Each preset is a named bundle of settings applied when the user selects a
-document type.  The four "main" presets mirror the type cards on the home
+document type. The four "main" presets mirror the type cards on the home
 screen; "Full OCR" and "Mixed" are preset-only (no home-screen card).
+
+V0.7.0 (wizard rework ②, D3): the OCR flags moved to the 3-mode
+vocabulary — presets carry ``ocr.mode`` (digital/scanned/auto) exactly
+like the wizard's Step-1 mode cards, and the dead flags are purged
+(the auto-detect flag was log-only; the content-filter preset values
+were never read — the filter hardcodes 80/0.40). ``apply_preset_settings``
+is the ONE applier both surfaces route through (the audit's split-brain
+applier note, §W2 — the wizard previously applied a subset, the
+Settings dialog all of it).
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 # (key, label, icon, subtitle, settings-applied-on-select, sub-tabs)
@@ -18,11 +28,7 @@ PRESETS: dict[str, dict[str, Any]] = {
         "settings": {
             "source_type": "normal_book",
             "ocr.timeout": 60,
-            "is_academic": False,
-            "ocr.force_ocr_all_pages": False,
-            "ocr.auto_detect_scanned": True,
-            "content_filter.min_content_chars": 80,
-            "content_filter.min_word_count": 3,
+            "ocr.mode": "auto",
             "advanced.extract_tables": False,
             "advanced.extract_figure_text": False,
             "summarisation.self_consistency": False,
@@ -36,11 +42,7 @@ PRESETS: dict[str, dict[str, Any]] = {
         "settings": {
             "source_type": "academic_paper",
             "ocr.timeout": 90,
-            "is_academic": True,
-            "ocr.force_ocr_all_pages": False,
-            "ocr.auto_detect_scanned": True,
-            "content_filter.min_content_chars": 40,
-            "content_filter.min_word_count": 2,
+            "ocr.mode": "auto",
             "advanced.extract_tables": True,
             "advanced.extract_figure_text": False,
             "summarisation.self_consistency": False,
@@ -54,11 +56,7 @@ PRESETS: dict[str, dict[str, Any]] = {
         "settings": {
             "source_type": "visual_catalogue",
             "ocr.timeout": 120,
-            "is_academic": False,
-            "ocr.force_ocr_all_pages": False,
-            "ocr.auto_detect_scanned": True,
-            "content_filter.min_content_chars": 80,
-            "content_filter.min_word_count": 3,
+            "ocr.mode": "auto",
             "advanced.extract_tables": False,
             "advanced.extract_figure_text": False,
             "segmentation.strategy": "auto",
@@ -71,11 +69,7 @@ PRESETS: dict[str, dict[str, Any]] = {
         "settings": {
             "source_type": "visual_catalogue",
             "ocr.timeout": 120,
-            "is_academic": False,
-            "ocr.force_ocr_all_pages": True,
-            "ocr.auto_detect_scanned": False,
-            "content_filter.min_content_chars": 30,
-            "content_filter.min_word_count": 1,
+            "ocr.mode": "scanned",
             "advanced.extract_figure_text": True,
             "segmentation.strategy": "token",
             "segmentation.token_limit": 1200,
@@ -89,11 +83,7 @@ PRESETS: dict[str, dict[str, Any]] = {
         "settings": {
             "source_type": "normal_book",
             "ocr.timeout": 120,
-            "is_academic": False,
-            "ocr.force_ocr_all_pages": True,
-            "ocr.auto_detect_scanned": False,
-            "content_filter.min_content_chars": 50,
-            "content_filter.min_word_count": 2,
+            "ocr.mode": "scanned",
             "advanced.extract_figure_text": False,
             "segmentation.strategy": "auto",
         },
@@ -105,17 +95,36 @@ PRESETS: dict[str, dict[str, Any]] = {
         "settings": {
             "source_type": "normal_book",
             "ocr.timeout": 90,
-            "is_academic": False,
-            "ocr.force_ocr_all_pages": False,
-            "ocr.auto_detect_scanned": True,
-            "content_filter.min_content_chars": 60,
-            "content_filter.min_word_count": 2,
+            "ocr.mode": "auto",
             "advanced.extract_figure_text": False,
             "segmentation.strategy": "auto",
         },
     },
     # V11.31: "Quick Markdown" (minimal) preset removed per user request.
 }
+
+
+def apply_preset_settings(update_setting: Callable[[str, Any], None], key: str) -> dict[str, Any]:
+    """Apply a preset's canonical settings bundle via ``update_setting``.
+
+    V0.7.0 (rework ②, the split-brain fix): the ONE applier — the Settings
+    dialog's Presets page routes through here, and the bundle's vocabulary
+    (``ocr.mode`` etc.) is the same one the wizard's Step-1 mode cards
+    write, so the two surfaces can no longer drift apart. Unknown keys
+    fall back to the normal_book bundle (mirrors the pre-V0.7.0 behaviour
+    of ``PRESETS.get(key, PRESETS["normal_book"])``).
+
+    Returns the applied bundle (callers may re-read it for UI refresh).
+    """
+    preset = PRESETS.get(key, PRESETS["normal_book"])
+    bundle = preset["settings"]
+    for setting_key, value in bundle.items():
+        update_setting(setting_key, value)
+    # source_type is carried inside the bundle — apply it explicitly too so
+    # the standalone key always lands (pre-V0.7.0 behaviour, kept verbatim).
+    update_setting("source_type", bundle.get("source_type", "normal_book"))
+    return bundle
+
 
 # V10.35.0 (Sprint 7.5): Token budget slider presets
 TOKEN_BUDGET_PRESETS = [

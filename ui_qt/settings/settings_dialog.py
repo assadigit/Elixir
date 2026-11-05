@@ -44,7 +44,7 @@ from ui_qt.settings.podcast_page import (
     PodcastPreviewSection,
     PodcastStyleSection,
 )
-from ui_qt.settings.presets import PRESETS
+from ui_qt.settings.presets import PRESETS, apply_preset_settings
 from ui_qt.settings.prompts_page import PromptsPage
 from ui_qt.settings.sections import (
     AiApiSection,
@@ -233,10 +233,11 @@ class _PresetsPage(QWidget):
         key_for_src = src
         if src not in self._cards:
             # infographics/visual_catalogue both set source_type=visual_catalogue;
-            # pick by force_ocr flag
+            # pick by the OCR mode (V0.7.0: presets carry ocr.mode — the
+            # scanned presets are the full-OCR ones)
             key_for_src = (
                 "infographics_slides"
-                if controller.get_setting("ocr.force_ocr_all_pages", False)
+                if controller.get_setting("ocr.mode", "auto") == "scanned"
                 and src == "visual_catalogue"
                 else "normal_book"
             )
@@ -248,13 +249,11 @@ class _PresetsPage(QWidget):
         # exclusive selection
         for k, c in self._cards.items():
             c.set_selected(k == key)
-        # apply the preset's settings bundle
-        preset = PRESETS.get(key, PRESETS["normal_book"])
-        for sk, sv in preset["settings"].items():
-            self.controller.update_setting(sk, sv)
-        self.controller.update_setting(
-            "source_type", preset["settings"].get("source_type", "normal_book")
-        )
+        # V0.7.0 (rework ②, the split-brain fix): apply the preset through
+        # the ONE canonical applier — the same bundle + vocabulary the
+        # wizard's surfaces use (previously this page hand-rolled its own
+        # loop over the same dict; the wizard applied a subset of it).
+        apply_preset_settings(self.controller.update_setting, key)
         # (re)build the sub-tabs for this preset's editable settings
         self.sub_tabs.clear()
         self._sections = []
@@ -536,7 +535,9 @@ class _LazyTabPlaceholder(QWidget):
         self._placeholder_lay.setSpacing(0)
         hint = QLabel("⏳  Loading…")
         hint.setAlignment(Qt.AlignCenter)
-        hint.setStyleSheet(f"color: {theme_manager.palette.text_secondary}; font-size: 13px; padding: 40px;")
+        hint.setStyleSheet(
+            f"color: {theme_manager.palette.text_secondary}; font-size: 13px; padding: 40px;"
+        )
         self._placeholder_lay.addWidget(hint)
         self._placeholder_lay.addStretch()
 

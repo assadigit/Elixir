@@ -247,7 +247,6 @@ class ConversionRequest:
     # (values unchanged: "qwen3-vl:8b").
     primary_ocr_model: str = DEFAULT_FALLBACK_OCR_MODEL
     fallback_ocr_model: str = DEFAULT_FALLBACK_OCR_MODEL
-    auto_detect_scanned: bool = True
     force_ocr_all_pages: bool = False
     image_max_size: int = 1200
     ocr_retries: int = 2

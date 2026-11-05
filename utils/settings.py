@@ -200,7 +200,6 @@ class Settings:
                 # (digital / scanned / auto) — the request twin is
                 # ConversionRequest.ocr_mode.
                 "mode": "auto",
-                "auto_detect_scanned": True,
                 "force_ocr_all_pages": False,
                 "image_max_size": 1200,
                 "image_dpi": 300,

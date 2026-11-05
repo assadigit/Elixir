@@ -135,7 +135,7 @@ class Step8Review(WizardStep):
         else:
             lines.append(f"  Pages: {s.page_range_start}-{s.page_range_end}")
         lines.append(f"  Page group size: {s.page_group_size}")
-        lines.append(f"  Auto-detect scanned: {'yes' if s.auto_detect_scanned else 'no'}")
+        lines.append(f"  OCR mode: {s.ocr_mode}")
         if s.selected_chapters:
             lines.append(f"  Selected chapters: {len(s.selected_chapters)} chapter(s)")
         lines.append("")

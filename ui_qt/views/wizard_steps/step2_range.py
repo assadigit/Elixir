@@ -120,10 +120,6 @@ class Step2Range(WizardStep):
         seg_lay.setContentsMargins(10, 10, 10, 8)
         seg_lay.setSpacing(6)
 
-        self.auto_detect_cb = QCheckBox("Auto-detect scanned pages (recommended)")
-        self.auto_detect_cb.setChecked(self.state.auto_detect_scanned)
-        seg_lay.addWidget(self.auto_detect_cb)
-
         group_row = QHBoxLayout()
         group_row.setSpacing(8)
         self.group_spin = QSpinBox()
@@ -219,6 +215,5 @@ class Step2Range(WizardStep):
             self.state.page_range_start = self.start_spin.value()
             self.state.page_range_end = self.end_spin.value()
         self.state.page_group_size = self.group_spin.value()
-        self.state.auto_detect_scanned = self.auto_detect_cb.isChecked()
         # Store chapter selection in the state's to_ui_data via a dynamic attr
         self.state.selected_chapters = self._selected_chapters

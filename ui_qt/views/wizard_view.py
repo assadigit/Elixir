@@ -496,7 +496,6 @@ class WizardView(QDialog):
         self.state.page_range_start = None
         self.state.page_range_end = None
         self.state.use_llm_ocr = True
-        self.state.auto_detect_scanned = True
         self.state.force_ocr_all_pages = False
         self.state.enable_content_filter = True
         self.state.generate_summaries = True
@@ -855,7 +854,7 @@ class WizardView(QDialog):
             log.append(f"  Pages: {s.page_range_start}-{s.page_range_end}", "INFO")
         if s.selected_chapters:
             log.append(f"  Selected chapters: {len(s.selected_chapters)} chapter(s)", "INFO")
-        log.append(f"  Auto-detect scanned: {s.auto_detect_scanned}", "INFO")
+        log.append(f"  OCR mode: {s.ocr_mode}", "INFO")
         log.append(f"  LLM OCR: {s.use_llm_ocr}, Force OCR: {s.force_ocr_all_pages}", "INFO")
         log.append(f"  PaddleOCR: {s.use_paddleocr}, Timeout: {s.ocr_timeout}s", "INFO")
         log.append(

@@ -376,8 +376,6 @@ class Step1Pdf(WizardStep):
                 pass  # handled by source_type
             elif sk == "ocr.force_ocr_all_pages":
                 self.state.force_ocr_all_pages = sv
-            elif sk == "ocr.auto_detect_scanned":
-                self.state.auto_detect_scanned = sv
             elif sk == "advanced.extract_tables":
                 self.state.extract_tables = sv
             elif sk == "advanced.extract_figure_text":
