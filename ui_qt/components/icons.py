@@ -222,6 +222,48 @@ ICONS: dict[str, str] = {
         '<path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>'
     ),
     "arrow-right": ('<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>'),
+    # V0.7.2 (wizard rework ④, D9): the Step-4 output cards + the Steps
+    # 5-8 control glyphs. Same Lucide 24×24 stroke family as the rest.
+    # ("newspaper" already exists above — reused for the briefing card.)
+    "package": (
+        '<path d="M16.5 9.4 7.55 4.24"/>'
+        '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>'
+        '<polyline points="3.29 7 12 12 20.71 7"/><line x1="12" x2="12" y1="22" y2="12"/>'
+    ),
+    "link": (
+        '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>'
+        '<path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>'
+    ),
+    "graduation-cap": (
+        '<path d="M21.42 10.922a1 1 0 0 0-.019-1.838L12.83 5.18a2 2 0 0 0-1.66 0L2.6 9.08a1 1 0 0 0 0 1.832l8.57 3.908a2 2 0 0 0 1.66 0z"/>'
+        '<path d="M22 10v6"/><path d="M6 12.5V16a6 3 0 0 0 12 0v-3.5"/>'
+    ),
+    "network": (
+        '<rect x="16" y="16" width="6" height="6" rx="1"/>'
+        '<rect x="2" y="16" width="6" height="6" rx="1"/>'
+        '<rect x="9" y="2" width="6" height="6" rx="1"/>'
+        '<path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"/><path d="M12 12V8"/>'
+    ),
+    "map": (
+        '<polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/>'
+        '<line x1="9" x2="9" y1="3" y2="18"/><line x1="15" x2="15" y1="6" y2="21"/>'
+    ),
+    "help-circle": (
+        '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>'
+        '<path d="M12 17h.01"/>'
+    ),
+    "book-open": (
+        '<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>'
+        '<path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>'
+    ),
+    "minimize-2": (
+        '<polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/>'
+        '<line x1="14" x2="21" y1="10" y2="3"/><line x1="3" x2="10" y1="21" y2="14"/>'
+    ),
+    "plug": (
+        '<path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/>'
+        '<path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/>'
+    ),
 }
 
 

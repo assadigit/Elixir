@@ -78,7 +78,11 @@ class WizardState:
     outputs_cheatsheet: bool = False  # V10.20.0: Cheatsheet
     outputs_skill: bool = False  # V10.21.0: Agent Skill (SKILL.md)
     compact_summaries: bool = False  # V10.20.0: Density mode
-    _streaming_enabled: bool = False  # V10.21.0: Streaming output display
+    # V0.7.2 (wizard rework ④, §W8): the streaming-enabled flag is DELETED
+    # — the Step-4 checkbox was dead code (never in _REQUEST_FIELD_MAP,
+    # never on ConversionRequest; the summariser's ghost getattr always
+    # read False). The transport's own streaming path (tests-only) is
+    # untouched.
     # V10.35.0: New outputs
     outputs_epub: bool = False  # V10.35.0: EPUB output
     outputs_quote_bank: bool = False  # V10.35.0: Quote bank
@@ -201,7 +205,6 @@ class WizardState:
             "output_skill": self.outputs_skill,
             "output_evidence_map": self.outputs_evidence_map,
             "compact_summaries": self.compact_summaries,
-            "_streaming_enabled": self._streaming_enabled,
             # V10.35.0: New outputs
             "output_epub": self.outputs_epub,
             "output_quote_bank": self.outputs_quote_bank,
