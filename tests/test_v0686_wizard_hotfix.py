@@ -370,3 +370,173 @@ class TestB1Step6OffscreenRender:
         finally:
             step6.hide()
             step6.deleteLater()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# B5 — the wizard force-disabled translation every run
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestB5LoadPins:
+    """_load_settings_into_state reads the translation settings (the
+    load-then-save round-trip the plan locks)."""
+
+    def test_load_reads_all_translation_settings(self):
+        src = _method_src(_WIZARD, "_load_settings_into_state", "WizardView")
+        for needle in (
+            '"translation.enabled"',
+            '"translation.backend"',
+            '"translation.default_target_lang"',
+            '"translation.harakat_model"',
+            '"translation.judge_model"',
+            '"translation.outputs.{_key}"',
+        ):
+            assert needle in src, f"load pin {needle!r} missing — the B5 round-trip is broken"
+
+    def test_state_default_still_false_without_settings(self):
+        """The dataclass default (shared.py translation_enabled=False) is
+        unchanged — B5 fixes the LOAD, not the default (a fresh install with
+        no saved settings still opens with translation off)."""
+        src = _src(_SHARED)
+        assert "translation_enabled: bool = False" in src
+
+
+class TestB5RoundTripBehaviour:
+    """The state-level characterization: open (load) → Start (save) keeps the
+    user's saved translation settings unless Step 6 changed them."""
+
+    @pytest.fixture
+    def wizard_pair(self):
+        _qt_or_skip()
+        from ui_qt.views.wizard_steps.shared import WizardState
+        from ui_qt.views.wizard_view import WizardView
+
+        stub = _StubController(
+            settings={
+                "translation.enabled": True,
+                "translation.backend": "ollama",
+                "translation.default_target_lang": "en",
+                "translation.harakat_model": "qwen2.5:7b",
+                "translation.judge_model": "translategemma:4b",
+                "translation.outputs.chapter_summaries": False,
+                "translation.outputs.keypoints": True,
+                "translation.outputs.mindmap": True,
+            }
+        )
+        view = WizardView.__new__(WizardView)
+        view.controller = stub
+        view.state = WizardState()
+        return view, stub
+
+    def test_open_start_keeps_translation_enabled(self, wizard_pair):
+        """The exact B5 repro: translation.enabled=true in settings must
+        survive a wizard open→Start with the step untouched."""
+        view, stub = wizard_pair
+        view._load_settings_into_state()
+        assert view.state.translation_enabled is True
+        view._save_translation_settings()
+        assert stub._settings["translation.enabled"] is True, (
+            "the wizard must write back what the user chose (B5 wipe)"
+        )
+
+    def test_all_sibling_fields_round_trip(self, wizard_pair):
+        view, stub = wizard_pair
+        view._load_settings_into_state()
+        view._save_translation_settings()
+        assert stub._settings["translation.backend"] == "ollama"
+        assert stub._settings["translation.default_target_lang"] == "en"
+        assert stub._settings["translation.harakat_model"] == "qwen2.5:7b"
+        assert stub._settings["translation.judge_model"] == "translategemma:4b"
+
+    def test_output_selections_round_trip(self, wizard_pair):
+        """The per-output choices survive too: pre-fix, a wizard Start reset
+        translation.outputs.* to the dataclass defaults ({chapter_summaries,
+        keypoints, podcast} True, the other eight False) — the same silent
+        override family (the save writes these keys unconditionally)."""
+        view, stub = wizard_pair
+        view._load_settings_into_state()
+        # chapter_summaries was UNchecked in settings; the dataclass default
+        # says True — the load must win.
+        assert view.state.translation_outputs["chapter_summaries"] is False
+        assert view.state.translation_outputs["keypoints"] is True
+        assert view.state.translation_outputs["mindmap"] is True
+        view._save_translation_settings()
+        assert stub._settings["translation.outputs.chapter_summaries"] is False
+        assert stub._settings["translation.outputs.keypoints"] is True
+        assert stub._settings["translation.outputs.mindmap"] is True
+
+    def test_step_change_wins_over_loaded_value(self, wizard_pair):
+        """The 'unless the step changed it' half: load enabled=True, the
+        user UNchecks Step 6 (save_to_state) → the save writes the change."""
+        view, stub = wizard_pair
+        view._load_settings_into_state()
+        view.state.translation_enabled = False  # the user's explicit choice
+        view._save_translation_settings()
+        assert stub._settings["translation.enabled"] is False
+
+    def test_empty_settings_load_defaults(self):
+        """Fresh install (nothing saved): the load keeps the dataclass
+        defaults — translation still OFF until the user turns it on."""
+        _qt_or_skip()
+        from ui_qt.views.wizard_steps.shared import WizardState
+        from ui_qt.views.wizard_view import WizardView
+
+        stub = _StubController()
+        view = WizardView.__new__(WizardView)
+        view.controller = stub
+        view.state = WizardState()
+        view._load_settings_into_state()
+        assert view.state.translation_enabled is False
+        assert view.state.translation_backend == "ollama"
+        assert view.state.translation_target_lang == "fa"
+        assert view.state.translation_harakat_model == ""
+
+
+class TestB5FullWizardCharacterization:
+    """The strongest form: the REAL full WizardView (all 10 steps built
+    offscreen, isolated HOME per the wz_icons_check.py pattern) — open it,
+    run the Start-path save, and the user's translation settings survive."""
+
+    @pytest.fixture(scope="class")
+    def app(self):
+        QtWidgets = _qt_or_skip()
+        return QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+
+    def test_open_start_round_trip_on_the_real_wizard(self, app, tmp_path, monkeypatch):
+        import tempfile
+
+        monkeypatch.setenv("HOME", tempfile.mkdtemp(prefix="elixir-v0686-home-"))
+        from ui_qt.views.wizard_view import WizardView
+
+        stub = _StubController(
+            settings={
+                "translation.enabled": True,
+                "translation.backend": "ollama",
+                "translation.default_target_lang": "fa",
+                "translation.harakat_model": "qwen2.5:7b",
+                "translation.judge_model": "translategemma:4b",
+                "translation.outputs.chapter_summaries": False,
+            },
+            models=["qwen2.5:7b", "translategemma:4b"],
+        )
+        view = WizardView(stub)
+        try:
+            # Open: the state loaded the user's settings BEFORE the steps
+            # were built, so Step 6 shows the truth.
+            assert view.state.translation_enabled is True
+            assert view.step6.enable_cb.isChecked(), (
+                "Step 6's enable checkbox must reflect the loaded setting"
+            )
+            assert view.step6.harakat_combo.currentData() == "qwen2.5:7b"
+            # Start: the exact _start_conversion save sequence for the
+            # translation block (steps' save_to_state + the settings save).
+            view.step6.save_to_state()
+            view._save_translation_settings()
+            assert stub._settings["translation.enabled"] is True, (
+                "the real wizard's Start must keep translation enabled (B5)"
+            )
+            assert stub._settings["translation.harakat_model"] == "qwen2.5:7b"
+            assert stub._settings["translation.outputs.chapter_summaries"] is False
+        finally:
+            view.hide()
+            view.deleteLater()

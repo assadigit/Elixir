@@ -59,6 +59,7 @@ from controller import Controller
 from core.common.progress_events import parse_progress_line
 from core.models import ConversionResult
 from ui_qt.controller_bridge import QtControllerBridge
+from ui_qt.settings.translation_page import _TRANSLATABLE_OUTPUTS
 from ui_qt.theme import theme_manager
 
 # V18.20.4.6 (O-b1): the wizard's step classes now live in
@@ -337,6 +338,32 @@ class WizardView(QDialog):
             self.state.max_output_tokens = int(
                 s.get_setting("summarisation.max_output_tokens", 16000)
             )
+            # V0.6.86 (wizard hotfix B5): translation settings round-trip.
+            # _save_translation_settings writes these unconditionally at
+            # conversion start, so they must be loaded at open — before
+            # this, WizardState.translation_enabled's False default meant
+            # every wizard Start silently wrote translation.enabled=false
+            # over the user's saved choice (the force-disable wipe), and
+            # the output/model fields reset to the dataclass defaults.
+            self.state.translation_enabled = bool(s.get_setting("translation.enabled", False))
+            # Raw load — Step 6 maps the legacy "nllb" backend to "ollama"
+            # at build time (the established UI fallback, step6:62-63).
+            self.state.translation_backend = str(
+                s.get_setting("translation.backend", "ollama") or "ollama"
+            )
+            self.state.translation_target_lang = str(
+                s.get_setting("translation.default_target_lang", "fa") or "fa"
+            )
+            self.state.translation_harakat_model = str(
+                s.get_setting("translation.harakat_model", "") or ""
+            )
+            self.state.translation_judge_model = str(
+                s.get_setting("translation.judge_model", "") or ""
+            )
+            for _key, _label, _sub in _TRANSLATABLE_OUTPUTS:
+                self.state.translation_outputs[_key] = bool(
+                    s.get_setting(f"translation.outputs.{_key}", False)
+                )
         except Exception as _e:
             logger.debug(
                 "ignored %s: %s", type(_e).__name__, _e
