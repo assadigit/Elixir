@@ -43,6 +43,7 @@ from core.pipeline import Converter
 from core.system.secrets import is_secret_path as _secret_path
 from utils.error_trace import log_swallow
 from utils.logging import get_main_logger
+from utils.network import list_ollama_models
 from utils.settings import Settings
 
 logger = get_main_logger()
@@ -510,6 +511,28 @@ class Controller:
 
     def get_setting(self, path: str, default: Any = None) -> Any:
         return self.settings.get(path, default)
+
+    # V0.6.86 (wizard hotfix B1): the model-picker list call. The wizard's
+    # Step 6 (step6_translation.py:85) and the Settings translation page
+    # (translation_page.py:151) both invoke
+    # ``self.controller.list_ollama_models()`` — a method that never
+    # existed. Both call sites swallowed the AttributeError into empty
+    # model combos, and the wizard's translation save then wrote "" over
+    # the saved ``translation.harakat_model`` (the wipe path pinned in
+    # WizardView._save_translation_settings' empty-selection guard).
+    # This delegates to the established helper (utils/network.py
+    # ``list_ollama_models`` — proxy-proof, connection-error-safe) — no
+    # new HTTP code.
+    def list_ollama_models(self) -> list[str]:
+        """Installed Ollama model names, best-effort.
+
+        The base URL comes from the canonical ``llm.ollama_url`` setting;
+        the 5s timeout keeps UI-thread probing bounded (the shared helper
+        defaults to 10s). Unreachable/unresponsive endpoints return
+        ``[]`` — callers populate an empty combo.
+        """
+        base_url = str(self.get_setting("llm.ollama_url", "http://localhost:11434"))
+        return list(list_ollama_models(base_url, timeout=5))
 
     # V0.16 (Phase 3 / tasks 3.2–3.4): keyring-aware accessors for API
     # keys. Every UI page that reads/writes a credential field uses these

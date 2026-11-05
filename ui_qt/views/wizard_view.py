@@ -948,13 +948,37 @@ class WizardView(QDialog):
 
     def _save_translation_settings(self) -> None:
         """Save translation settings to the controller so the post-conversion
-        auto-translation picks them up."""
+        auto-translation picks them up.
+
+        V0.6.86 (wizard hotfix B1) — the empty-selection guard: the model
+        combos go empty whenever the Ollama listing fails (server down,
+        page built before the list arrives); an empty selection must
+        never wipe a saved model. A non-empty ``translation.harakat_model``
+        / ``translation.judge_model`` is preserved and the skip is
+        logged. Deliberate clearing stays possible through the Settings
+        translation page (its combos save unconditionally); the judge
+        combo's "(use summarisation model)" reset is therefore a
+        Settings-page action, not a wizard one.
+        """
         c = self.controller
         c.update_setting("translation.enabled", self.state.translation_enabled)
         c.update_setting("translation.backend", self.state.translation_backend)
         c.update_setting("translation.default_target_lang", self.state.translation_target_lang)
-        c.update_setting("translation.harakat_model", self.state.translation_harakat_model)
-        c.update_setting("translation.judge_model", self.state.translation_judge_model)
+        for state_field, setting_path in (
+            ("translation_harakat_model", "translation.harakat_model"),
+            ("translation_judge_model", "translation.judge_model"),
+        ):
+            new_value = str(getattr(self.state, state_field) or "")
+            if not new_value:
+                saved_value = str(c.get_setting(setting_path, "") or "")
+                if saved_value:
+                    logger.info(
+                        "wizard save kept %s=%r (wizard selection was empty)",
+                        setting_path,
+                        saved_value,
+                    )
+                    continue
+            c.update_setting(setting_path, new_value)
         for key, val in self.state.translation_outputs.items():
             c.update_setting(f"translation.outputs.{key}", val)
 
