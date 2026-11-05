@@ -488,6 +488,16 @@ def build_summarizer(
     req = ConversionRequest(input_path=PROJECT_ROOT / "VERSION", output_dir=output_dir)
     req.generate_summaries = True
     req.max_workers = workers if parallel else 1
+    # V0.7.3 (wizard rework ⑤, audit §5): the request-layer defaults were
+    # unified (coverage 0.50 → 0.85, ctx 131072 → 32768, out 4096 → 16000).
+    # The golden fixtures were FROZEN under the OLD defaults — the freeze
+    # harness pins them explicitly so a defaults change can never silently
+    # drift the fixtures (same pattern as the mapreduce mode's 32k pin
+    # below; re-freezing under new conditions is the owner's deliberate
+    # call, not a side effect of a default change).
+    req.coverage_threshold = 0.50
+    req.summarisation_max_context_tokens = 131072
+    req.summarisation_max_output_tokens = 4096
     # Phase 6 bench modes: the b3 mode drives the multi-sample path.
     if getattr(build_summarizer, "_b3_mode", False):
         try:
