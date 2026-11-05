@@ -605,9 +605,24 @@ class TestDeMagicSourcePins:
         assert "_DEFAULT_MODEL = RIG_FALLBACK_MODEL" in src
 
     def test_transcribe_dialog_combo_uses_constant(self) -> None:
+        # V0.7.6 pin refresh: V0.6.41 deliberately REMOVED the
+        # RIG_FALLBACK_MODEL pre-fill/fallback from the transcribe dialog
+        # (a hardcoded model name may not exist on the operator's
+        # machine — the design comments at the combo build and in
+        # _refresh_models document it); the combo is populated by the
+        # live llama.cpp/Ollama probes instead. The V18.20.4.12-era pin
+        # (import + addItem(RIG_FALLBACK_MODEL)) predated that change.
+        # Refreshed intent: the de-magic rule INVERTS for this dialog —
+        # the hardcoded rig model must stay OUT of the code, and the
+        # live-probe population must remain.
         src = _src("ui_qt/views/service_dialogs/dialogs/transcribe_service_dialog.py")
-        assert "from core.llm.model_taxonomy import RIG_FALLBACK_MODEL" in src
-        assert "self.llm_combo.addItem(RIG_FALLBACK_MODEL)" in src
+        code = _strip_comments(src)
+        assert "RIG_FALLBACK_MODEL" not in code, (
+            "V0.6.41 design: the transcribe combo must not hardcode "
+            "RIG_FALLBACK_MODEL — it lists live backends"
+        )
+        assert "list_ollama_models" in code, "the live Ollama probe must populate the combo"
+        assert "list_llamacpp_models" in code, "the live llama.cpp probe must populate the combo"
 
     def test_podcast_maker_combo_default_uses_constant(self) -> None:
         src = _src("ui_qt/views/podcast_maker_view.py")
