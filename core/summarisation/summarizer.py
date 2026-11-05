@@ -428,6 +428,13 @@ class Summarizer(
         """
         Returns recommended context size (tokens) based on available VRAM.
 
+        V0.7.3 (wizard rework ⑤, D12): the ladder moved VERBATIM to
+        ``core.summarisation.effective_limits.auto_context_limit`` — one
+        source shared with Step 5's computed "Effective after model
+        limits" line, so the UI display and the runtime clamp can never
+        drift apart. Behavior-identical delegation (the ladder body and
+        its VRAM thresholds live there now).
+
         V10.23.0: Aggressive VRAM utilization. The user's RTX 3060 12GB
         with a 9B Q4 model (6.5GB weights) was only using 7.6/12GB VRAM.
         The old limits (64k for 12GB) left ~4GB unused. Now we target
@@ -452,27 +459,12 @@ class Summarizer(
         slowed inference (Ollama re-allocates KV cache on each call).
         V10.23.0 removes the down-scaling and instead UP-scales to fill VRAM.
         """
-        try:
-            import torch
+        # V0.7.3 (wizard rework ⑤, D12): delegate to the shared ladder —
+        # core.summarisation.effective_limits (the module docstring there
+        # carries the moved guidance table verbatim).
+        from core.summarisation.effective_limits import auto_context_limit
 
-            if torch.cuda.is_available():
-                vram_gb = torch.cuda.get_device_properties(0).total_memory / (1024**3)
-                if vram_gb < 8:
-                    return 32768
-                elif vram_gb < 12:
-                    return 65536
-                elif vram_gb < 16:
-                    return 131072  # V10.23.0: was 65536 → 131072 (aggressive)
-                elif vram_gb < 24:
-                    return 131072
-                else:
-                    return 262144  # V10.23.0: was 131072 → 262144
-            else:
-                return 65536
-        except ImportError:
-            return 65536
-        except Exception as _e:
-            return 65536
+        return auto_context_limit()
 
     # ─────────────────────────────────────────────────────────────────────────
     # Keyword coverage (deterministic)
