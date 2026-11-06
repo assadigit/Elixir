@@ -204,6 +204,24 @@ class AiQualitySection(QGroupBox):
         )
         self.quality_combo.currentTextChanged.connect(self._apply_preset)
         f.addRow("Preset", self.quality_combo)
+        # V0.7.8 (the audit's observation 1): the preset's effect is now
+        # spelled out at the control itself. "Maximum" flips the
+        # Ollama-only self-consistency ON, which silently no-ops on other
+        # providers (bullet_pipeline.py:992) — the checkbox below carries
+        # the truthful copy, and the preset tooltip now does too, so the
+        # over-promise is visible BEFORE the pick, not only after it.
+        self.quality_combo.setToolTip(
+            "Quality presets set the two dials below:\n\n"
+            "• Fast — temperature 0.3, self-consistency OFF.\n"
+            "• Balanced — temperature 0.2, self-consistency OFF.\n"
+            "• Maximum — temperature 0.1 AND self-consistency ON.\n\n"
+            "Maximum's self-consistency only runs when the provider is\n"
+            "Ollama — on llama.cpp / LM Studio / cloud it is skipped with a\n"
+            "logged warning, and on Ollama it costs ~3-4× (2-3 extra\n"
+            "full-chapter calls, merged by union). Not on Ollama? Maximum\n"
+            "equals temperature 0.1 alone — untick the self-consistency\n"
+            "checkbox if you want exactly that."
+        )
 
         from PySide6.QtWidgets import QSlider
 

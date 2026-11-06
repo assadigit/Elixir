@@ -58,7 +58,10 @@ choice).
    measures with the keyword/concept metric; if it proves gameable,
    swap in the semantic metric.
 5. **B3 bullet-voting exposure decision.** The default-off path exists
-   in the engine; whether any UI ever exposes it is the owner's call.
+   in the engine, and the Settings AI-quality page has carried a
+   default-off b3-voting checkbox since V0.4.19 — the open decision is
+   whether any NEW surface (the wizard) should expose it, on top of
+   that long-standing Settings checkbox.
 
 ## THE OWNER'S-CALL LEFTOVERS
 
