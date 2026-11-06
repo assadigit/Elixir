@@ -54,3 +54,8 @@ runs/
 # V0.6.6: the dot-prefix actually matters — bare `review-loop/` never
 # matched `.review-loop/`, so the notes folder showed up as untracked.
 .review-loop/
+
+# 📸 Root-level working screenshots (visual-verification rounds) — the
+# approved purge (post-V0.7.7) removed the 31 tracked ones; the rule
+# keeps future grab-script output out of the tree.
+/now*.png
