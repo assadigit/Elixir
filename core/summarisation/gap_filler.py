@@ -8,7 +8,7 @@ calls to fill them; also runs the V17.3 deterministic judge for author coverage.
 
 | Summarizer method (old) | gap_filler function (new) | self deps |
 |------------------------|--------------------------|-----------|
-| ``_gap_fill_concepts``  | ``gap_fill_concepts``    | ``request.output_dir``, ``log``, ``_recover_vram``, ``prompt_manager``, ``call_llm`` (V0.6.14: was ``_call_fast_llm``), ``_strip_thinking``, ``overdeliver_enabled``, ``overdeliver_target``, ``coverage_threshold``, ``_effective_target``, ``temperature`` |
+| ``_gap_fill_concepts``  | ``gap_fill_concepts``    | ``request.output_dir``, ``log``, ``_recover_vram``, ``prompt_manager``, ``call_llm`` (V0.6.14: was ``_call_fast_llm``), ``_strip_thinking``, ``coverage_threshold``, ``_effective_target``, ``temperature`` (V0.7.8: the two ``overdeliver_*`` params dropped — they were signature-only legacy, never read in the body; the audit's observation 3) |
 
 **Mutable-state handling**: ``self._last_coverage`` is mutated at the end of
 the method (set to the post-gap-fill coverage %). The extracted function takes
@@ -67,8 +67,6 @@ def gap_fill_concepts(
     output_dir: Any,
     temperature: float,
     effective_target: float,
-    overdeliver_enabled: bool,
-    overdeliver_target: float,
     coverage_threshold: float,
     prompt_manager: PromptManagerLike,
     recover_vram: RecoverVramFn,

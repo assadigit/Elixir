@@ -506,7 +506,7 @@ class SummarizerCoverageMixin:
         """V3.2.0 C2: Detect uncovered concepts and make a targeted LLM call.
 
         V18.12 (Phase 5 Stage 3, Batch 2.7): logic extracted verbatim to
-        ``gap_filler.gap_fill_concepts``. The 12 self-deps are passed as
+        ``gap_filler.gap_fill_concepts``. The self-deps are passed as
         explicit kwargs (the proven-safe pattern — NOT a context object).
         The mutable ``self._last_coverage`` is set via a ``set_last_coverage``
         callback (preserves the original side-effect). Byte-for-byte identical
@@ -522,8 +522,6 @@ class SummarizerCoverageMixin:
             output_dir=self.request.output_dir,
             temperature=self.temperature,
             effective_target=self._effective_target,
-            overdeliver_enabled=self.overdeliver_enabled,
-            overdeliver_target=self.overdeliver_target,
             coverage_threshold=self.coverage_threshold,
             prompt_manager=self.prompt_manager,
             recover_vram=self._recover_vram,

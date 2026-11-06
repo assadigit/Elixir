@@ -127,8 +127,6 @@ def _common_kwargs(deps):
         output_dir="/tmp/test_output",
         temperature=0.7,
         effective_target=0.85,
-        overdeliver_enabled=True,
-        overdeliver_target=1.0,
         coverage_threshold=0.70,
         prompt_manager=deps["prompt_manager"],
         recover_vram=deps["recover_vram"],
