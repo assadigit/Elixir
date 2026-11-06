@@ -203,3 +203,56 @@ session's in-chat state was lost.)
    cannot be finished before a session might end, commit the partial
    state with a `wip:` prefix and push it — Rule 3's green gate still
    applies.
+
+---
+
+## Rule 8 — Never hardcode a specific TTS engine/model in logic (V0.7.8)
+
+> **The user directive (post-V0.7.7 session):** "Never hardcode a
+> specific tts model, so incidents like vibevoice — which is now
+> deprecated — don't happen again."
+
+TTS engines and models are external, fast-moving dependencies. This
+codebase has already lived through the full cycle: Piper was removed by
+user decision (V0.6.64), VibeVoice was broken on source installs for 10
+releases while the failure hid as "rig variance" (V0.6.64 → V0.7.6), and
+NeuTTS, Qwen3-TTS, Coqui XTTS v2, Kokoro, and Sherpa have all rotated
+through as the recommended pick. Any place that bakes a specific
+engine's name into LOGIC keeps working only until that engine changes
+or dies.
+
+### What this means in practice
+
+1. **Logic reads the setting; it never assumes the engine.** Any code
+   that needs to know "which TTS engine will run" must read the same
+   setting the generator reads — `tts.en_engine`, single-sourced in the
+   defaults registry (`utils/settings.py`). The pre-V0.7.8 wizard VRAM
+   check hardcoded `tts_engine="neutts"`, so a Kokoro user's Phase-4
+   estimate billed 1.5 GB instead of 0.5 GB — fixed in V0.7.8 with the
+   B7 pattern (read the real setting, like the real translator fix).
+2. **Model paths and names come from Settings, single-sourced.** Every
+   engine takes its model path from a `tts.*` setting and fails with a
+   clear "path not set" error when it is empty. Defaults live ONCE in
+   the registry; call sites read the setting and never re-declare the
+   literal (the V0.6.8 audit B18 single-sourcing rule, same shape).
+3. **UI catalogs are the designed choice surface, not violations.** The
+   Settings TTS page's engine dropdown and the quick-services default
+   combo deliberately list engine names — adding or removing an entry
+   there is a product decision made in the open.
+4. **Engine-internal knowledge stays inside the engine.** Voice-preset
+   lists (Kokoro's `af_heart`, VibeVoice's 25 presets) live in
+   `core/tts/` next to the engine that owns them; the rest of the app
+   never re-declares them.
+5. **Deprecation must degrade, not break.** When an upstream engine
+   dies, the app's answer is the honest error path (a clear message +
+   the other engines still working) — and the rig tests keep pinning
+   the REAL configured-engine behaviour, never a hardcoded stand-in.
+
+### Enforcement
+
+`tests/test_v0740_step6_translation.py::TestVramCheckPassesConfiguredTtsEngine`
+pins the pattern: the hardcoded `tts_engine="neutts"` form is gone from
+the wizard, the check reads `tts.en_engine`, the configured value flows
+into the VRAM budget, and the missing-setting fallback matches the
+router's own semantics. New TTS-touching code must follow the same
+shape.

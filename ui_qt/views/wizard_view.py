@@ -684,7 +684,18 @@ class WizardView(QDialog):
                 harakat_model=s.translation_harakat_model if s.translation_enabled else "",
                 judge_model=s.translation_judge_model if s.translation_enabled else "",
                 tts_enabled=s.outputs_tts,
-                tts_engine="neutts",
+                # V0.7.8 (the owner's standing rule — never hardcode a TTS
+                # engine in logic; AGENTS.md Rule 8): the REAL engine is the
+                # tts.en_engine setting, the same single source the actual
+                # TTS output routes through (PodcastAudioGenerator,
+                # podcast_audio.py:182). The old line hardcoded "neutts", so
+                # a Kokoro user's Phase-4 estimate billed 1.5 GB instead of
+                # 0.5 GB — the check ignored the configured engine entirely.
+                # Same defect class as B7 nine lines above (the stand-in
+                # translator); the or-fallback mirrors the router's own
+                # "everything but kokoro routes to neutts" reading
+                # (engine.py, TTSRouter.english_engine).
+                tts_engine=str(self.controller.get_setting("tts.en_engine", "neutts") or "neutts"),
                 max_workers=s.max_workers,
             )
             report = format_vram_report(estimates, peak, total, recommendation)

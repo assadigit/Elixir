@@ -20,6 +20,11 @@ dead settings keys (``translation.outputs.packets``,
 6c — VRAM truth (B7): the conversion-start VRAM check passes the REAL
 translator model (the ``translation.model`` setting), not
 ``summarisation_model`` standing in for the translator.
+
+6d — TTS engine truth (V0.7.8): the same check passes the CONFIGURED
+TTS engine (the ``tts.en_engine`` setting — the same source
+PodcastAudioGenerator reads), not a hardcoded "neutts" (the owner's
+never-hardcode-a-TTS-engine rule, AGENTS.md Rule 8).
 """
 
 from __future__ import annotations
@@ -1134,3 +1139,88 @@ class TestVramCheckPassesRealModels:
         same setting — the two checks now agree on the translator."""
         conv = _src(_project_root / "core" / "pipeline" / "converter_impl.py")
         assert 'translation_model=self.settings.get("translation.model", "")' in conv
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 6d — TTS engine truth (V0.7.8): the VRAM check reads the configured engine
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TestVramCheckPassesConfiguredTtsEngine:
+    """The owner's standing rule (recorded as AGENTS.md Rule 8): never
+    hardcode a specific TTS engine in logic — the VibeVoice incident class.
+    The wizard's Phase-4 VRAM estimate hardcoded ``tts_engine="neutts"``
+    (wizard_view.py:687, pre-V0.7.8) while the actual TTS output runs
+    PodcastAudioGenerator, which routes through the ``tts.en_engine``
+    SETTING (podcast_audio.py:182) — so a Kokoro user's estimate billed
+    1.5 GB (NeuTTS) instead of 0.5 GB.  Same class as B7 (6c above): the
+    check must read the same setting the generator reads."""
+
+    @pytest.fixture(scope="class")
+    def app(self):
+        QtWidgets = _qt_or_skip()
+        return QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+
+    def test_the_hardcoded_engine_line_is_gone(self):
+        src = _src(_WIZARD)
+        assert 'tts_engine="neutts"' not in src
+
+    def test_the_check_reads_the_en_engine_setting(self):
+        src = _src(_WIZARD)
+        assert 'self.controller.get_setting("tts.en_engine", "neutts")' in src
+
+    def test_configured_engine_flows_into_the_budget(self, app, monkeypatch, tmp_path):
+        """Mock the calculator, assert the call args: the engine billed
+        is the tts.en_engine SETTING (kokoro → the 0.5 GB tier), never a
+        hardcoded stand-in."""
+        import core.vram_calculator as vc
+
+        view, _stub = TestVramCheckPassesRealModels._wizard(
+            app,
+            monkeypatch,
+            tmp_path,
+            settings={"tts.en_engine": "kokoro"},
+        )
+        try:
+            view.state.outputs_tts = True
+
+            seen = {}
+
+            def _capture(**kwargs):
+                seen.update(kwargs)
+                return ([], 1.0, 12.0, "rec")  # fits — no policy modal
+
+            monkeypatch.setattr(vc, "calculate_vram_budget", _capture)
+            monkeypatch.setattr(vc, "get_total_vram", lambda: 12.0)
+            assert view._check_vram_budget(None) is True
+            assert seen["tts_engine"] == "kokoro", (
+                "the CONFIGURED engine (tts.en_engine), never a hardcoded one"
+            )
+            assert seen["tts_enabled"] is True
+        finally:
+            view.hide()
+            view.deleteLater()
+
+    def test_missing_setting_falls_back_to_neutts(self, app, monkeypatch, tmp_path):
+        """No tts.en_engine in settings → neutts: the registry default
+        (utils/settings.py:881) and the router's own reading of anything
+        that is not "kokoro" (engine.py, TTSRouter.english_engine)."""
+        import core.vram_calculator as vc
+
+        view, _stub = TestVramCheckPassesRealModels._wizard(app, monkeypatch, tmp_path)
+        try:
+            view.state.outputs_tts = True
+
+            seen = {}
+
+            def _capture(**kwargs):
+                seen.update(kwargs)
+                return ([], 1.0, 12.0, "rec")
+
+            monkeypatch.setattr(vc, "calculate_vram_budget", _capture)
+            monkeypatch.setattr(vc, "get_total_vram", lambda: 12.0)
+            assert view._check_vram_budget(None) is True
+            assert seen["tts_engine"] == "neutts"
+        finally:
+            view.hide()
+            view.deleteLater()
