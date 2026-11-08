@@ -1,6 +1,6 @@
 """V0.6.83 (UI/UX correction Round 3) — characterization tests.
 
-The Round-3 correction spec (ELIXIR_UI_UX_CORRECTION_ROUND_3.md) changes
+The Round-3 correction spec (docs/ELIXIR_UI_UX_CORRECTION_ROUND_3.md) changes
 four behaviors; every one is pinned here, pure-first (the house pattern):
 
 1. §2.1 — the first-run window target moves to 1440×900
@@ -20,7 +20,7 @@ four behaviors; every one is pinned here, pure-first (the house pattern):
    viewport) with a scalable text rhythm, and the hero still-life renders
    as a TRUE transparent RGBA pixmap (no flattened rectangle).
 
-V0.6.84 (Round-4, ELIXIR_UI_UX_CORRECTION_ROUND_4.md) supersedes parts of
+V0.6.84 (Round-4, docs/ELIXIR_UI_UX_CORRECTION_ROUND_4.md) supersedes parts of
 (3) and (4) — the compact-density re-measure for the user's real
 ~1100×720 desktop band: nav rows 32 (was 37), the card floor 240 /
 compact chrome (was 272 / 144), the floor-driven three-column reflow

@@ -2,7 +2,7 @@
 
 > 🗄️ **Archive:** entries older than the V0.4.x line (V0.20.x, V0.13–V0.19,
 > V0.01–V0.12, and the whole legacy V18.x "MarkItDown Pro" era) now live in
-> [`CHANGELOG_ARCHIVE.md`](CHANGELOG_ARCHIVE.md) — moved verbatim, nothing
+> [`docs/CHANGELOG_ARCHIVE.md`](docs/CHANGELOG_ARCHIVE.md) — moved verbatim, nothing
 > deleted. The versioning-reset mapping (V0.01 = legacy V18.20.4.12) is in the
 > archive's V0.01 entry.
 >
@@ -60,7 +60,7 @@
 ## V0.6.86 — the wizard translation hotfix: the two live data-loss bugs (B1: the missing `Controller.list_ollama_models` — both UI call sites swallowed the AttributeError into empty model combos and the wizard save then wrote `""` over the saved `translation.harakat_model`/`judge_model`; fixed by the delegating controller method + an empty-selection guard in `_save_translation_settings`, and B5: the wizard force-disabled translation every run — `WizardState.translation_enabled` defaults False, `_load_settings_into_state` never read the translation settings, and `_save_translation_settings` wrote them unconditionally at every Start; fixed by the load-then-save round-trip)
 
 **The campaign step:** Phase ① of the approved wizard rework
-(`ELIXIR_WIZARD_REWORK_ROUND_2_PLAN.md`, decision D20 — hotfix both
+(`docs/ELIXIR_WIZARD_REWORK_ROUND_2_PLAN.md`, decision D20 — hotfix both
 immediately, before any rework). Scope discipline: exactly these two
 bugs, nothing else; the shell restyle + 3-mode Step 1 + `ocr_mode`
 backend open the rework at V0.7.0 (next session per the Phase-3
@@ -156,7 +156,7 @@ era commits is untouched, out of hotfix scope per Rule 2).
 ## V0.6.85 — UI/UX correction Round 5: the truthful backend status (a real connection-state model replaces the misleading "Ready" — Checking… / Connected / Backend offline / API unavailable / Not configured / Model unavailable, each derived from a REAL probe via the existing V0.6.69 poll for locals and ONE bounded async request for APIs; `LocalLLMStatus` gains the `models` evidence tuple so "Model unavailable" is only claimed when the listing is authoritative), the clean header (the duplicate Settings action AND the provider pill retired — provider selection + a one-shot async Test connection now live in Settings → AI), the Full Conversion Wizard card's VERIFIED vertical centering (equal bookend stretches + an explicitly right-aligned arrow disc; 10/10 live geometry checks), and the hero's decoration stepped back one more notch (circle alphas 24/18/14 → 14/10/7, hills 30/18 → 20/12)
 
 **The correction spec behind this release:** the Round-5 audit
-(`ELIXIR_UI_UX_CORRECTION_ROUND_5.md`) — a refinement/correctness pass
+(`docs/ELIXIR_UI_UX_CORRECTION_ROUND_5.md`) — a refinement/correctness pass
 over the composition the previous rounds landed (explicitly NOT another
 redesign: the 3×3 grid, the sidebar, the hero and the status bar all
 preserved). The four headline defects and their fixes:
@@ -242,7 +242,7 @@ clean on every touched file.
 
 ## V0.6.84.1 — the Round-4 polish: three wrap defects fixed at the user's field window (the sidebar's longest tool name back on ONE line — FONT.sidebar 13→12 + tightened nav insets, the column 139 px vs the label's 130; the hero support's pinned two-line break restored — the width cap now floors at the pinned first line's measured advance so "organized" is never orphaned; the featured card's description back on TWO lines — the card chrome 110→97 px + the desc band's floor 11→10 px), the architecture/typeface/reflow untouched, the full functional sweep re-run clean, and the now5 evidence set regenerated
 
-**Spec follow-up:** `ELIXIR_UI_UX_CORRECTION_ROUND_4.md` §2.2
+**Spec follow-up:** `docs/ELIXIR_UI_UX_CORRECTION_ROUND_4.md` §2.2
 ("Descriptions should occupy no more than two lines"), §3.2 ("Prefer the
 single-line treatment shown in the reference"), and the V0.6.81 pinned
 hero-break contract. Each defect was found by re-reviewing the shipped
@@ -253,7 +253,7 @@ live-verified (measured widths before/after) and rendered in both themes.
 ## V0.6.84 — UI/UX correction Round 4: the compact three-column dashboard at the user's real window (the floor-driven Quick Tools reflow — 3 columns now reach the app's own 1100×720 minimum; the card density band 84–122 px with typography that scales 13/11 → 17/13), the three-region sidebar (scroll-free primary nav, FIXED lower Settings/About, compact fully-readable tagline card — no internal scrollbar at the user's rail), exactly ONE theme control (the status strip's Light/Dark selector; the top-bar moon removed), IBM Plex Sans as the bundled primary typeface (selected over Manrope by the spec §6.3 in-app comparison, replacing Inter), the dark-theme hero-ink fix, and the Round-4 evidence set (now5*.png)
 
 **The correction spec behind this release:** the Round-4 audit
-(`ELIXIR_UI_UX_CORRECTION_ROUND_4.md`) measured the shipped dashboard
+(`docs/ELIXIR_UI_UX_CORRECTION_ROUND_4.md`) measured the shipped dashboard
 (`now5.png`/`14.png`, 1096×717 — the user's real window) against the
 approved reference and found the remaining defects were all DENSITY
 defects: the Quick Tools grid collapsed to two columns with only four
@@ -462,7 +462,7 @@ documented M4 set, untouched; conftest formatted clean).
 
 ## V0.6.83 — UI/UX correction Round 3: the properly sized window (1440×900 first-run target, the screen-derived 1100×720 minimum, implausibly-small restores clamped up), the responsive sidebar rail (clamp(180, 0.18·w, 260) with a compact profile and word-wrapped nav labels), the body-driven hero (~0.325 of the viewport, a fully scalable text rhythm, and the still-life as a TRUE transparent RGBA composite — the baked rectangle retired), and the tiered Quick Tools reflow (measured single-line comfort gate above the readability floor)
 
-The Round-3 correction spec (`ELIXIR_UI_UX_CORRECTION_ROUND_3.md`) measured
+The Round-3 correction spec (`docs/ELIXIR_UI_UX_CORRECTION_ROUND_3.md`) measured
 the shipped dashboard against the approved reference and found the primary
 defect was the WINDOW: a ~893×609-class geometry with a ~30% sidebar could
 only ever compose one clipped card column. This pass fixes both levels
@@ -2496,7 +2496,7 @@ carry.
 
 ## V0.6.8 — the SWOT re-audit release: the dead VRAM safety gate found, the "14 pinned failures" myth retired, the fix/improve/optimize backlog filed (no runtime changes)
 
-> **The release (an audit-only release from the SWOT re-audit charter):** a full read-only re-audit of V0.6.7 — two independent fresh-eyes review passes (code-quality; architecture/integration), scripted shape/complexity/MI/import-graph metrics, a full-suite run, and every top finding re-verified by the orchestrator before filing. Zero runtime code changes: every fix is queued for the next session with its evidence. The full report is `docs/AUDIT_SWOT_V0.6.7.md` (scorecard: architecture 4 · scalability 4 · performance 3.5 · integration 3.5 · modularization 3.5 · maintainability 2.5 · clean code 2.5); the next session's charter is rewritten from its findings in `NEW_SESSION_PROMPT.md`.
+> **The release (an audit-only release from the SWOT re-audit charter):** a full read-only re-audit of V0.6.7 — two independent fresh-eyes review passes (code-quality; architecture/integration), scripted shape/complexity/MI/import-graph metrics, a full-suite run, and every top finding re-verified by the orchestrator before filing. Zero runtime code changes: every fix is queued for the next session with its evidence. The full report is `docs/AUDIT_SWOT_V0.6.7.md` (scorecard: architecture 4 · scalability 4 · performance 3.5 · integration 3.5 · modularization 3.5 · maintainability 2.5 · clean code 2.5); the next session's charter is rewritten from its findings in `docs/NEW_SESSION_PROMPT.md`.
 >
 > **BLOCKER — the VRAM-overbudget safety gate is unreachable dead code, and its 12 red tests were mispinned as "environment failures":** the V0.5.14 hotfix left an unconditional `return None` at `converter_impl.py:502`, making the 34-line proceed/ask/abort policy block (`:503-536`) unreachable. The `local.vram_overbudget_policy` setting (still registered at `utils/settings.py:455`), the `vram_overbudget_acknowledged` request field, and the docstring (`:411-429`) still promising enforcement are all placebo. 8 converter + 4 segmentation VRAM tests fail at HEAD (verified: `pytest tests/test_converter_phase3_characterization.py` → 8 F/123 P) — the last two session baselines listed exactly these 12 as "pinned environment families" (T1, a baseline-integrity process failure: a test net whose reds are myth-labeled stops protecting anything). Operator decision queued: restore the policy or delete it honestly (block + docstring + setting + 12 tests in one commit).
 >
@@ -2630,7 +2630,7 @@ carry.
 
 ## V0.6.1 — the V0.5.21 backlog shipped: the thin gap-fill prompt tightening, the glossary pair-form dedup, the Searles see-also bound
 
-> **The release (the three code-fixable V0.5.21 backlog items — filed by the V0.5.17 audit (line 44, the see-also content-inflation caveat) + the V0.5.19.1 audit (line 88, the pair-form note) + NEW_SESSION_PROMPT.md's secondary agenda):** the V0.6.0 campaign closed the tools verification; this release closes the pipeline-quality backlog that remained. All three fixes are content-agnostic (Rule 1), pinned defect-driven (22 of the 29 new tests fail on the pre-fix HEAD), net-green (the same 14 environment failures, +29 passing, eval gate OK, prompt manifest untouched — the tightened prompts are the INLINE roster-gap-fill prompts in `gap_fill_batch.py`, not the `prompts/` bank).
+> **The release (the three code-fixable V0.5.21 backlog items — filed by the V0.5.17 audit (line 44, the see-also content-inflation caveat) + the V0.5.19.1 audit (line 88, the pair-form note) + docs/NEW_SESSION_PROMPT.md's secondary agenda):** the V0.6.0 campaign closed the tools verification; this release closes the pipeline-quality backlog that remained. All three fixes are content-agnostic (Rule 1), pinned defect-driven (22 of the 29 new tests fail on the pre-fix HEAD), net-green (the same 14 environment failures, +29 passing, eval gate OK, prompt manifest untouched — the tightened prompts are the INLINE roster-gap-fill prompts in `gap_fill_batch.py`, not the `prompts/` bank).
 >
 > **Fix 1 — the thin roster-gap-fill prompt tightening (backlog item 1):** the V0.5.19/V0.5.20 ship-time flags catch the thin one-liners ("Name made significant contributions to …" / "Name: Contributed to literature on …"), but the MODEL still wrote them — the roster gap-fill prompts never demanded the author's SPECIFIC contribution. Both inline prompts now carry an explicit quality rule: state the theory/term/distinction/finding/method the source excerpt (or glossary context) attributes to THAT author; NEVER a generic registry phrase — the banned set is the exact generic citation-registry verb family the V0.5.19 `_THIN_GAPFILL_SENTENCE_RE` detector pins (generic English, no book vocabulary). Sites: the main batch prompt's attribution-rules block (gap_fill_batch.py) + the final-check round-4 prompt's contribution line. Decision documented: the backlog offered "a prompt tightening OR a quality gate at the gap-fill merge" — the tightening ships; a merge-time gate that DROPS thin bullets would re-introduce the coverage-gap problem the V0.5.6 architecture fought (the flags stay the audit-visible safety net; the honest-gap policy applies to ungroundable content, not to thin-but-true phrasing).
 >
@@ -4259,7 +4259,7 @@ actions.
   Eval gate unchanged (uses stored fixtures; `prompt_manifest_hash ee5a61d0`
   flat). Commit `d164092`.
 
-**2. The third SWOT (`SESSION_REPORT.md` §Phase 7 — commit `812d14b`):** a
+**2. The third SWOT (`docs/SESSION_REPORT.md` §Phase 7 — commit `812d14b`):** a
   fresh, evidence-first SWOT of the post-refactor tree (@ `f628a43`),
   delta-compared vs the Phase 1 baseline. Census re-run on BOTH trees
   (current `f628a43` + baseline `e6032ee` via git worktree) with a fresh
@@ -4270,7 +4270,7 @@ actions.
   W4 stale docs, W7 .venv hygiene, O1/O3 dead-code sweep), 4 IMPROVED (S1,
   S2, S4, W2), 0 regressions. Binding quality constraint inverted: coverage
   (6→8) → clarity (8→6). 5 NEW items folded from the Phase 5/6 catalog
-  (S7-S8, W11-W13, O8-O10, T7-T8). See `SESSION_REPORT.md` §Phase 7 for the
+  (S7-S8, W11-W13, O8-O10, T7-T8). See `docs/SESSION_REPORT.md` §Phase 7 for the
   four SWOT tables + the Phase-1→now delta table + the top-5 actions.
 
 **3. The V0.4.26 backlog triage (items 1-4 queued for the rig):** the five

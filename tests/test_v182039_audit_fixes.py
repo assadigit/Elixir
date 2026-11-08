@@ -133,9 +133,9 @@ _RUNTIME_PREFIXES = (
 )
 _SKIP_FILES = {
     "CHANGELOG.md",
-    "Project-History.md",
+    "docs/Project-History.md",
     "Readme.md",
-    "NEW_SESSION_PROMPT.md",
+    "docs/NEW_SESSION_PROMPT.md",
     "docs/EVALUATION_FRAMEWORK.md",
     "docs/USER_OLLAMA_MODELS.md",
     "docs/EMBEDDERS.md",

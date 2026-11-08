@@ -254,7 +254,7 @@ launcher guard → frozen-env setup → pycache purge → crash visibility → *
 - **Done when:** QA report accepted.
 
 ### M4 — Documentation & release handoff
-- **Files:** `CHANGELOG.md`, `release_notes/V0.6.70.md` (version bump decision), `README.md` screenshots/sections if needed, root `NEW_SESSION_PROMPT.md` refresh (with user approval), this report chain.
+- **Files:** `CHANGELOG.md`, `release_notes/V0.6.70.md` (version bump decision), `README.md` screenshots/sections if needed, `docs/NEW_SESSION_PROMPT.md` refresh (with user approval), this report chain.
 - **Process:** per AGENTS.md Rules 2–6: conventional commits, suite green, zip in download folder + GitHub Release **only with explicit user authorization** (the package's SESSION_WORKFLOW overrides "every version gets a release" until the user authorizes publishing).
 - **Done when:** docs/changelog updated, commits pushed (with approval), release prepared (publishing gated).
 

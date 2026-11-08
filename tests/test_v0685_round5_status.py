@@ -1,6 +1,6 @@
 """V0.6.85 — Round-5 characterization pins (the truthful status model).
 
-Round-5 spec (ELIXIR_UI_UX_CORRECTION_ROUND_5.md):
+Round-5 spec (docs/ELIXIR_UI_UX_CORRECTION_ROUND_5.md):
 
 * §3  — the Full Conversion Wizard card's icon + text group + arrow are
         vertically centered (text left-aligned, arrow right-aligned).
