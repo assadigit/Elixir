@@ -42,7 +42,7 @@ Google Fonts variable files (OFL 1.1):
 
 ## The Round-4 evaluation record (spec §6.1/§6.3)
 
-`ELIXIR_UI_UX_CORRECTION_ROUND_4.md` required an in-app comparison of
+`docs/ELIXIR_UI_UX_CORRECTION_ROUND_4.md` required an in-app comparison of
 **Manrope** (the preferred first candidate) and **IBM Plex Sans** before
 finalizing the primary face. Both were bundled and rendered through the
 production theme pipeline in the REAL dashboard — light + dark, at the

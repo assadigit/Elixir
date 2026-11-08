@@ -2,7 +2,7 @@
 
 The V0.5.20 release closed the dedicated-tools campaign's pipeline-side
 backlog; the remaining V0.5.21 backlog (filed by the V0.5.17 audit line
-44 + the V0.5.19.1 audit line 88 + NEW_SESSION_PROMPT.md §"Secondary
+44 + the V0.5.19.1 audit line 88 + docs/NEW_SESSION_PROMPT.md §"Secondary
 agenda") has three code-fixable items:
 
 ITEM 1 — thin roster-gap-fill prompt tightening: the thin one-liners

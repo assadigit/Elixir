@@ -24,11 +24,11 @@ _ALLOWED = {
     "utils/settings.py",  # _LEGACY_USER_DIR_NAME migration source
     "core/system/secrets.py",  # _LEGACY_KEYCHAIN_SERVICE read-fallback
     "CHANGELOG.md",  # historical entries + this release's note
-    "CHANGELOG_ARCHIVE.md",  # Phase-2 doc reorg: the archive carries legacy pre-rebrand brand strings by design
+    "docs/CHANGELOG_ARCHIVE.md",  # Phase-2 doc reorg: the archive carries legacy pre-rebrand brand strings by design
     "docs/AUDIT_SWOT_V0.11.md",  # V0.12/V0.13 audit deliverable — historical references
-    "Project-History.md",  # historical development log
+    "docs/Project-History.md",  # historical development log
     "README.md",  # the "previously known as" callout
-    "NEW_SESSION_PROMPT.md",  # working-agreement history note (checked below)
+    "docs/NEW_SESSION_PROMPT.md",  # working-agreement history note (checked below)
 }
 # V0.6.7 (review-loop Step 4): release_notes/ joined the historical-record
 # allowance. Root cause: the V0.6.6 note (1714c6d, last session) truthfully

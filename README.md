@@ -8,7 +8,7 @@ Runs locally on Windows 10/11 with **Python 3.12 + PySide6 6.11**. Supports loca
 
 > 🧪 **Previously "MarkItDown Pro"?** You're in the right place — the app was **rebranded to Elixir** in legacy V18.20.4.11. On first launch your `~/.markitdown_pro` directory (settings, cached models, prompts, keychain secrets) is **migrated automatically** to `~/.elixir`. Nothing to do, nothing lost.
 >
-> 🔢 **Versioning reset:** with the rebrand complete, Elixir **dropped the legacy `V18.x` line** and versions on its own: **V0.01 = the final legacy release (V18.20.4.12) repackaged**, then V0.02, V0.03, … See the V0.01 entry in [`CHANGELOG_ARCHIVE.md`](CHANGELOG_ARCHIVE.md) for the mapping.
+> 🔢 **Versioning reset:** with the rebrand complete, Elixir **dropped the legacy `V18.x` line** and versions on its own: **V0.01 = the final legacy release (V18.20.4.12) repackaged**, then V0.02, V0.03, … See the V0.01 entry in [`CHANGELOG_ARCHIVE.md`](docs/CHANGELOG_ARCHIVE.md) for the mapping.
 >
 > ℹ️ The [`markitdown`](https://github.com/microsoft/markitdown) *Python library* (Microsoft's PDF-extraction engine, used internally) keeps its name — it's a dependency, not the app.
 
@@ -468,7 +468,7 @@ Elixir/
 
 ## 📊 Project Status
 
-**Current version: Elixir V0.4.25.** Release history lives in [`CHANGELOG.md`](CHANGELOG.md) (V0.4.x line, detailed); everything older — the V0.20.x audit campaigns, V0.13–V0.19, V0.01–V0.12, and the legacy `V18.x` era — is archived verbatim in [`CHANGELOG_ARCHIVE.md`](CHANGELOG_ARCHIVE.md), with an era summary in [`Project-History.md`](Project-History.md).
+**Current version: Elixir V0.4.25.** Release history lives in [`CHANGELOG.md`](CHANGELOG.md) (V0.4.x line, detailed); everything older — the V0.20.x audit campaigns, V0.13–V0.19, V0.01–V0.12, and the legacy `V18.x` era — is archived verbatim in [`CHANGELOG_ARCHIVE.md`](docs/CHANGELOG_ARCHIVE.md), with an era summary in [`Project-History.md`](docs/Project-History.md).
 
 ### ✅ Independent SWOT Audit (V18.20.4.9 baseline)
 
@@ -512,9 +512,9 @@ A full verification pass against the V18.20.4.0 SWOT analysis (99 findings + 22 
 ## 📜 History & Changelog
 
 - 📋 [`CHANGELOG.md`](CHANGELOG.md) — every release, incident, and fix with full evidence
-- 🗄️ [`CHANGELOG_ARCHIVE.md`](CHANGELOG_ARCHIVE.md) — every pre-V0.4.x entry, verbatim
-- 📖 [`Project-History.md`](Project-History.md) — era summary + pointer; long-form story archived
-- 🧭 [`NEW_SESSION_PROMPT.md`](NEW_SESSION_PROMPT.md) — working agreements for AI-assisted sessions
+- 🗄️ [`CHANGELOG_ARCHIVE.md`](docs/CHANGELOG_ARCHIVE.md) — every pre-V0.4.x entry, verbatim
+- 📖 [`Project-History.md`](docs/Project-History.md) — era summary + pointer; long-form story archived
+- 🧭 [`NEW_SESSION_PROMPT.md`](docs/NEW_SESSION_PROMPT.md) — working agreements for AI-assisted sessions
 
 ---
 

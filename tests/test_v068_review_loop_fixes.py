@@ -536,7 +536,7 @@ class TestB18WindowsPathsSingleSourced:
 # the B4/B5/B10 bug CLASSES outside the charter's named sites; each was
 # verified before fixing (one reviewer claim — "the CHANGELOG V0.04
 # known-follow-ups note does not exist" — was corrected: it lives at
-# CHANGELOG_ARCHIVE.md:1497; the deferral was documented, and is now closed).
+# docs/CHANGELOG_ARCHIVE.md:1497; the deferral was documented, and is now closed).
 
 
 class TestLoop3LlmDispatcherSweep:

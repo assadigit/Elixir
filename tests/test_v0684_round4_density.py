@@ -1,6 +1,6 @@
 """V0.6.84 (UI/UX correction Round 4) — characterization tests.
 
-The Round-4 correction spec (ELIXIR_UI_UX_CORRECTION_ROUND_4.md) —
+The Round-4 correction spec (docs/ELIXIR_UI_UX_CORRECTION_ROUND_4.md) —
 "Dashboard density, sidebar usability, typography, and visual fidelity" —
 changes five behaviors; every one is pinned here, pure-first (the house
 pattern), with live offscreen verification for the geometry that only
